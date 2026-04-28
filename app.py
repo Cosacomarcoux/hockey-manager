@@ -808,7 +808,8 @@ def partido_iniciar(partido_id):
         partido.cronometro_iniciado = None  # Inicia pausado, el entrenador toca "play"
 
     db.session.commit()
-    return jsonify(_serializar_estado(partido))
+    # Redirigir al detalle (la pantalla en vivo)
+    return redirect(url_for('partido_detalle', partido_id=partido_id))
 
 
 @app.route('/partido/<int:partido_id>/cronometro/<accion>', methods=['POST'])
