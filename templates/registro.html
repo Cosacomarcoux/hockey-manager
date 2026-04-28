@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Registro - Hockey Manager{% endblock %}
+
+{% block content %}
+<div class="auth-card">
+  <h1 class="auth-title">🏑 Hockey Manager</h1>
+  <p class="auth-subtitle">Creá tu cuenta de entrenador</p>
+
+  <form method="POST" class="auth-form">
+    <label>
+      <span>Tu nombre</span>
+      <input type="text" name="nombre" required autofocus>
+    </label>
+    <label>
+      <span>Email</span>
+      <input type="email" name="email" required>
+    </label>
+    <label>
+      <span>Contraseña (mínimo 6 caracteres)</span>
+      <input type="password" name="password" required minlength="6">
+    </label>
+    <button type="submit" class="btn btn-primary">Crear cuenta</button>
+  </form>
+
+  <p class="auth-footer">
+    ¿Ya tenés cuenta? <a href="{{ url_for('login') }}">Ingresá acá</a>
+  </p>
+</div>
+{% endblock %}
