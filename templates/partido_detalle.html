@@ -1,1 +1,551 @@
+{% extends "base.html" %}
+{% block title %}vs {{ partido.rival }} - Hockey Manager{% endblock %}
 
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>vs {{ partido.rival }}</h1>
+    <div class="match-meta">
+      {{ partido.fecha.strftime('%d %b %Y') }}
+      <span class="match-dot">·</span>
+      {{ partido.lugar }}
+      {% if partido.notas %}<span class="match-dot">·</span>{{ partido.notas }}{% endif %}
+    </div>
+  </div>
+  <div style="display: flex; gap: 8px;">
+    {% if partido.estado == 'pendiente' %}
+      <a href="{{ url_for('partido_editar', partido_id=partido.id) }}" class="btn btn-secondary">Editar</a>
+    {% endif %}
+  </div>
+</div>
+
+{# ============== ESTADO PENDIENTE ============== #}
+{% if partido.estado == 'pendiente' %}
+
+<div class="match-pending-card">
+  <h2>Listo para arrancar</h2>
+  <p class="muted">
+    Tenés <strong>{{ partido.convocadas|length }}</strong> jugadoras convocadas.
+  </p>
+
+  {% if partido.convocadas|length == 0 %}
+  <div class="warning-box">
+    No hay jugadoras convocadas. Editá el partido para agregarlas.
+  </div>
+  {% else %}
+  <div class="convocadas-preview">
+    {% for c in partido.convocadas %}
+    <div class="convocada-chip">
+      <div class="convocada-avatar avatar-sm">{{ c.jugadora.iniciales }}</div>
+      <span>{{ c.jugadora.nombre }} {{ c.jugadora.apellido }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if partido.convocadas|length > 0 %}
+  <form method="POST" action="{{ url_for('partido_iniciar', partido_id=partido.id) }}"
+        onsubmit="return confirm('¿Arrancar el partido? El cronómetro inicia pausado y vos lo ponés a correr cuando empieza el primer cuarto.')">
+    <button type="submit" class="btn btn-primary btn-big">▶️ Iniciar partido en vivo</button>
+  </form>
+  {% endif %}
+
+  <form method="POST" action="{{ url_for('partido_eliminar', partido_id=partido.id) }}"
+        onsubmit="return confirm('¿Eliminar este partido?')" style="margin-top: 12px;">
+    <button type="submit" class="link-delete">Eliminar partido</button>
+  </form>
+</div>
+
+{# ============== ESTADO EN CURSO O FINALIZADO ============== #}
+{% else %}
+
+<div id="live-app" data-partido-id="{{ partido.id }}" data-estado="{{ partido.estado }}">
+  <!-- Marcador y cronómetro -->
+  <div class="scoreboard">
+    <div class="score-section">
+      <div class="score-team">Mi equipo</div>
+      <div class="score-value" id="score-favor">{{ partido.goles_favor }}</div>
+      {% if partido.estado == 'en_curso' %}
+      <div class="score-buttons">
+        <button class="score-btn" data-gol="favor-plus">+</button>
+        <button class="score-btn-minus" data-gol="favor-minus">−</button>
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="clock-section">
+      <div class="clock-cuarto" id="clock-cuarto">Q{{ partido.cuarto_actual }}</div>
+      <div class="clock-time" id="clock-time">--:--</div>
+      {% if partido.estado == 'en_curso' %}
+      <div class="clock-buttons">
+        <button class="clock-btn" id="btn-cuarto-prev">◀</button>
+        <button class="clock-btn-play" id="btn-play-pause">▶</button>
+        <button class="clock-btn" id="btn-cuarto-next">▶</button>
+      </div>
+      <div class="clock-actions">
+        <button class="link-edit" id="btn-reset">Reiniciar cuarto</button>
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="score-section">
+      <div class="score-team">{{ partido.rival }}</div>
+      <div class="score-value" id="score-contra">{{ partido.goles_contra }}</div>
+      {% if partido.estado == 'en_curso' %}
+      <div class="score-buttons">
+        <button class="score-btn" data-gol="contra-plus">+</button>
+        <button class="score-btn-minus" data-gol="contra-minus">−</button>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if partido.estado == 'finalizado' %}
+  <div class="finalizado-banner">
+    🏁 Partido finalizado
+    <form method="POST" action="{{ url_for('partido_reanudar', partido_id=partido.id) }}" style="display:inline">
+      <button type="submit" class="link-edit">Reanudar partido</button>
+    </form>
+  </div>
+  {% endif %}
+
+  <!-- Panel de estadísticas en vivo -->
+  <div class="stats-panel">
+    <div class="stats-column">
+      <div class="stats-col-title">Mi equipo</div>
+      <button class="stat-btn stat-ataque" data-stat="ataque_favor" {% if partido.estado != 'en_curso' %}disabled{% endif %}>
+        <span class="stat-icon">🟢</span>
+        <span class="stat-label">Ataque</span>
+        <span class="stat-count" id="cnt-ataque-favor">0</span>
+      </button>
+      <button class="stat-btn stat-tiro" data-stat="tiro_favor" {% if partido.estado != 'en_curso' %}disabled{% endif %}>
+        <span class="stat-icon">🎯</span>
+        <span class="stat-label">Tiro al arco</span>
+        <span class="stat-count" id="cnt-tiro-favor">0</span>
+      </button>
+      <button class="stat-btn stat-corner" data-stat="corner_favor" {% if partido.estado != 'en_curso' %}disabled{% endif %}>
+        <span class="stat-icon">🚩</span>
+        <span class="stat-label">Córner corto</span>
+        <span class="stat-count" id="cnt-corner-favor">0</span>
+      </button>
+    </div>
+
+    <div class="stats-column">
+      <div class="stats-col-title">{{ partido.rival }}</div>
+      <button class="stat-btn stat-ataque" data-stat="ataque_contra" {% if partido.estado != 'en_curso' %}disabled{% endif %}>
+        <span class="stat-icon">🔴</span>
+        <span class="stat-label">Ataque</span>
+        <span class="stat-count" id="cnt-ataque-contra">0</span>
+      </button>
+      <button class="stat-btn stat-tiro" data-stat="tiro_contra" {% if partido.estado != 'en_curso' %}disabled{% endif %}>
+        <span class="stat-icon">🛡️</span>
+        <span class="stat-label">Tiro al arco</span>
+        <span class="stat-count" id="cnt-tiro-contra">0</span>
+      </button>
+      <button class="stat-btn stat-corner" data-stat="corner_contra" {% if partido.estado != 'en_curso' %}disabled{% endif %}>
+        <span class="stat-icon">⚠️</span>
+        <span class="stat-label">Córner corto</span>
+        <span class="stat-count" id="cnt-corner-contra">0</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Jugadoras -->
+  <div class="players-section">
+    <div class="players-header">
+      <h2>Jugadoras</h2>
+      <div class="players-tabs">
+        <button class="players-tab active" data-tab="cancha">En cancha (<span id="cnt-cancha">0</span>)</button>
+        <button class="players-tab" data-tab="banco">En banco (<span id="cnt-banco">0</span>)</button>
+      </div>
+    </div>
+
+    <div class="players-list" id="players-list">
+      <!-- Se rellena con JS -->
+    </div>
+  </div>
+
+  <!-- Línea de tiempo -->
+  <div class="timeline-section">
+    <h2>Eventos del partido</h2>
+    <div id="timeline-list">
+      {% if partido.eventos|length == 0 %}
+      <p class="muted">Todavía no hay eventos registrados.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if partido.estado == 'en_curso' %}
+  <div class="match-end-section">
+    <form method="POST" action="{{ url_for('partido_finalizar', partido_id=partido.id) }}"
+          onsubmit="return confirm('¿Finalizar el partido? Después podés reanudarlo si necesitás.')">
+      <button type="submit" class="btn btn-secondary">🏁 Finalizar partido</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Modal para gol a favor: paso 1 elegir jugadora -->
+<div class="modal-overlay" id="gol-modal" style="display: none;">
+  <div class="modal-card">
+    <h3>⚽ Gol a favor — ¿Quién lo hizo?</h3>
+    <p class="muted">Tocá la jugadora que convirtió:</p>
+    <div class="modal-players" id="modal-players"></div>
+    <div class="modal-actions">
+      <button class="link-edit" id="btn-gol-sin-jugadora">Sin asignar</button>
+      <button class="link-delete" id="btn-gol-cancelar">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal para gol a favor: paso 2 elegir tipo -->
+<div class="modal-overlay" id="gol-tipo-modal" style="display: none;">
+  <div class="modal-card">
+    <h3>¿Cómo fue el gol?</h3>
+    <p class="muted">Elegí cómo se convirtió:</p>
+    <div class="gol-tipo-buttons">
+      <button class="gol-tipo-btn" data-subtipo="jugada">
+        <span class="gol-tipo-emoji">⚽</span>
+        <span class="gol-tipo-label">De jugada</span>
+      </button>
+      <button class="gol-tipo-btn" data-subtipo="corner_corto">
+        <span class="gol-tipo-emoji">🚩</span>
+        <span class="gol-tipo-label">De córner corto</span>
+      </button>
+      <button class="gol-tipo-btn" data-subtipo="penal">
+        <span class="gol-tipo-emoji">🎯</span>
+        <span class="gol-tipo-label">De penal</span>
+      </button>
+    </div>
+    <div class="modal-actions">
+      <button class="link-delete" id="btn-gol-tipo-cancelar">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal para gol en contra: elegir tipo -->
+<div class="modal-overlay" id="gol-contra-modal" style="display: none;">
+  <div class="modal-card">
+    <h3>❌ Gol en contra — ¿Cómo fue?</h3>
+    <p class="muted">Elegí cómo nos lo hicieron:</p>
+    <div class="gol-tipo-buttons">
+      <button class="gol-tipo-btn" data-subtipo="jugada">
+        <span class="gol-tipo-emoji">⚽</span>
+        <span class="gol-tipo-label">De jugada</span>
+      </button>
+      <button class="gol-tipo-btn" data-subtipo="corner_corto">
+        <span class="gol-tipo-emoji">🚩</span>
+        <span class="gol-tipo-label">De córner corto</span>
+      </button>
+      <button class="gol-tipo-btn" data-subtipo="penal">
+        <span class="gol-tipo-emoji">🎯</span>
+        <span class="gol-tipo-label">De penal</span>
+      </button>
+    </div>
+    <div class="modal-actions">
+      <button class="link-delete" id="btn-gol-contra-cancelar">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ============== APP EN VIVO ==============
+const liveApp = document.getElementById('live-app');
+if (liveApp) {
+  const partidoId = liveApp.dataset.partidoId;
+  const estado = liveApp.dataset.estado;
+  const enCurso = (estado === 'en_curso');
+
+  let estadoActual = null;
+  let tabActual = 'cancha';
+  let intervaloUI = null;
+  let baseSegundos = 0;
+  let baseTimestamp = 0;
+  let cronometroCorriendo = false;
+
+  function formatoTiempo(segs) {
+    const m = Math.floor(segs / 60);
+    const s = segs % 60;
+    return `${m}:${s.toString().padStart(2,'0')}`;
+  }
+
+  function actualizarCronometroLocal() {
+    if (!estadoActual) return;
+    let segs = baseSegundos;
+    if (cronometroCorriendo) {
+      segs += Math.floor((Date.now() - baseTimestamp) / 1000);
+    }
+    document.getElementById('clock-time').textContent = formatoTiempo(segs);
+
+    // Actualizar tiempo de jugadoras en cancha
+    if (cronometroCorriendo) {
+      document.querySelectorAll('.player-item[data-en-cancha="true"]').forEach(el => {
+        const baseJ = parseInt(el.dataset.basesegundos);
+        const baseJts = parseInt(el.dataset.basetimestamp);
+        const segsJ = baseJ + Math.floor((Date.now() - baseJts) / 1000);
+        const tEl = el.querySelector('.player-time');
+        if (tEl) tEl.textContent = formatoTiempo(segsJ);
+      });
+    }
+  }
+
+  function renderEstado(data) {
+    estadoActual = data;
+    baseSegundos = data.cronometro_segundos;
+    baseTimestamp = Date.now();
+    cronometroCorriendo = data.cronometro_corriendo;
+
+    document.getElementById('score-favor').textContent = data.goles_favor;
+    document.getElementById('score-contra').textContent = data.goles_contra;
+    document.getElementById('clock-cuarto').textContent = `Q${data.cuarto_actual}`;
+    document.getElementById('clock-time').textContent = formatoTiempo(data.cronometro_segundos);
+
+    // Actualizar contadores de stats
+    if (data.stats) {
+      document.getElementById('cnt-ataque-favor').textContent = data.stats.ataque_favor;
+      document.getElementById('cnt-ataque-contra').textContent = data.stats.ataque_contra;
+      document.getElementById('cnt-tiro-favor').textContent = data.stats.tiro_favor;
+      document.getElementById('cnt-tiro-contra').textContent = data.stats.tiro_contra;
+      document.getElementById('cnt-corner-favor').textContent = data.stats.corner_favor;
+      document.getElementById('cnt-corner-contra').textContent = data.stats.corner_contra;
+    }
+
+    const btnPlayPause = document.getElementById('btn-play-pause');
+    if (btnPlayPause) {
+      btnPlayPause.textContent = data.cronometro_corriendo ? '⏸' : '▶';
+      btnPlayPause.classList.toggle('playing', data.cronometro_corriendo);
+    }
+
+    // Render jugadoras
+    const cancha = data.jugadoras.filter(j => j.en_cancha);
+    const banco = data.jugadoras.filter(j => !j.en_cancha);
+    document.getElementById('cnt-cancha').textContent = cancha.length;
+    document.getElementById('cnt-banco').textContent = banco.length;
+
+    const lista = (tabActual === 'cancha') ? cancha : banco;
+    const listEl = document.getElementById('players-list');
+    listEl.innerHTML = lista.map(j => {
+      const segs = j.segundos_jugados;
+      return `
+        <div class="player-item" data-jugadora-id="${j.id}" data-en-cancha="${j.en_cancha}"
+             data-basesegundos="${segs}" data-basetimestamp="${Date.now()}">
+          <div class="convocada-avatar avatar-sm">${j.iniciales}</div>
+          <div class="player-name-block">
+            <div class="player-name">${j.nombre} ${j.apellido}${j.apodo ? ' "' + j.apodo + '"' : ''}</div>
+            <div class="player-time-label">Tiempo jugado: <span class="player-time">${formatoTiempo(segs)}</span></div>
+          </div>
+          ${enCurso ? `
+          <button class="player-action ${j.en_cancha ? 'btn-salir' : 'btn-entrar'}" data-accion="${j.en_cancha ? 'salir' : 'entrar'}">
+            ${j.en_cancha ? 'Sale' : 'Entra'}
+          </button>
+          ` : ''}
+        </div>
+      `;
+    }).join('') || '<p class="muted">Nadie en esta zona todavía.</p>';
+
+    // Reattach handlers de jugadoras
+    document.querySelectorAll('.player-action').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const item = e.target.closest('.player-item');
+        const jId = item.dataset.jugadoraId;
+        const accion = e.target.dataset.accion;
+        await fetch(`/partido/${partidoId}/jugadora/${jId}/${accion}`, { method: 'POST' })
+          .then(r => r.json()).then(renderEstado);
+      });
+    });
+
+    // Render eventos
+    const tlEl = document.getElementById('timeline-list');
+    if (data.eventos.length === 0) {
+      tlEl.innerHTML = '<p class="muted">Todavía no hay eventos registrados.</p>';
+    } else {
+      tlEl.innerHTML = data.eventos.slice().reverse().map(e => `
+        <div class="timeline-item">
+          <span class="timeline-time">${e.tiempo_str}</span>
+          <span class="timeline-desc">${e.descripcion}</span>
+          ${enCurso ? `<button class="link-delete-small" data-evento-id="${e.id}">✕</button>` : ''}
+        </div>
+      `).join('');
+
+      document.querySelectorAll('[data-evento-id]').forEach(b => {
+        b.addEventListener('click', async (e) => {
+          if (!confirm('¿Eliminar este evento?')) return;
+          const id = e.target.dataset.eventoId;
+          await fetch(`/partido/${partidoId}/evento/${id}/eliminar`, { method: 'POST' })
+            .then(r => r.json()).then(renderEstado);
+        });
+      });
+    }
+  }
+
+  // Cargar estado inicial
+  fetch(`/partido/${partidoId}/estado`).then(r => r.json()).then(renderEstado);
+
+  // Tabs cancha/banco
+  document.querySelectorAll('.players-tab').forEach(t => {
+    t.addEventListener('click', e => {
+      tabActual = e.target.dataset.tab;
+      document.querySelectorAll('.players-tab').forEach(tt => tt.classList.remove('active'));
+      e.target.classList.add('active');
+      if (estadoActual) renderEstado(estadoActual);
+    });
+  });
+
+  if (enCurso) {
+    // Play/Pause
+    document.getElementById('btn-play-pause').addEventListener('click', async () => {
+      const accion = cronometroCorriendo ? 'pause' : 'play';
+      await fetch(`/partido/${partidoId}/cronometro/${accion}`, { method: 'POST' })
+        .then(r => r.json()).then(renderEstado);
+    });
+
+    // Reset cuarto
+    document.getElementById('btn-reset').addEventListener('click', async () => {
+      if (!confirm('¿Reiniciar el cronómetro del cuarto a 0?')) return;
+      await fetch(`/partido/${partidoId}/cronometro/reset`, { method: 'POST' })
+        .then(r => r.json()).then(renderEstado);
+    });
+
+    // Cambio de cuarto
+    document.getElementById('btn-cuarto-next').addEventListener('click', async () => {
+      await fetch(`/partido/${partidoId}/cuarto/siguiente`, { method: 'POST' })
+        .then(r => r.json()).then(renderEstado);
+    });
+    document.getElementById('btn-cuarto-prev').addEventListener('click', async () => {
+      await fetch(`/partido/${partidoId}/cuarto/anterior`, { method: 'POST' })
+        .then(r => r.json()).then(renderEstado);
+    });
+
+    // Goles
+    let golJugadoraSeleccionada = null;  // Para el flujo de gol a favor
+
+    document.querySelectorAll('[data-gol]').forEach(b => {
+      b.addEventListener('click', async (e) => {
+        const tipo = e.target.dataset.gol;
+        if (tipo === 'favor-plus') {
+          mostrarModalGolJugadora();
+        } else if (tipo === 'contra-plus') {
+          mostrarModalGolContra();
+        } else if (tipo === 'favor-minus') {
+          // Eliminar el último gol a favor
+          const ultGol = estadoActual.eventos.slice().reverse().find(e => e.tipo === 'gol_favor');
+          if (ultGol && confirm('¿Restar un gol a favor (eliminar el último)?')) {
+            await fetch(`/partido/${partidoId}/evento/${ultGol.id}/eliminar`, { method: 'POST' })
+              .then(r => r.json()).then(renderEstado);
+          }
+        } else if (tipo === 'contra-minus') {
+          const ultGol = estadoActual.eventos.slice().reverse().find(e => e.tipo === 'gol_contra');
+          if (ultGol && confirm('¿Restar un gol en contra (eliminar el último)?')) {
+            await fetch(`/partido/${partidoId}/evento/${ultGol.id}/eliminar`, { method: 'POST' })
+              .then(r => r.json()).then(renderEstado);
+          }
+        }
+      });
+    });
+
+    function mostrarModalGolJugadora() {
+      const modal = document.getElementById('gol-modal');
+      const cancha = estadoActual.jugadoras.filter(j => j.en_cancha);
+      const html = cancha.map(j => `
+        <button class="modal-player-btn" data-jugadora-id="${j.id}">
+          <div class="convocada-avatar avatar-sm">${j.iniciales}</div>
+          <span>${j.nombre} ${j.apellido}</span>
+        </button>
+      `).join('') || '<p class="muted">No hay jugadoras en cancha. Hacé clic en "Sin asignar" o agregá jugadoras a cancha primero.</p>';
+      document.getElementById('modal-players').innerHTML = html;
+      modal.style.display = 'flex';
+
+      document.querySelectorAll('.modal-player-btn').forEach(b => {
+        b.addEventListener('click', (e) => {
+          const jId = e.currentTarget.dataset.jugadoraId;
+          golJugadoraSeleccionada = parseInt(jId);
+          modal.style.display = 'none';
+          mostrarModalGolTipo();
+        });
+      });
+    }
+
+    function mostrarModalGolTipo() {
+      document.getElementById('gol-tipo-modal').style.display = 'flex';
+    }
+
+    function mostrarModalGolContra() {
+      document.getElementById('gol-contra-modal').style.display = 'flex';
+    }
+
+    document.getElementById('btn-gol-sin-jugadora').addEventListener('click', () => {
+      golJugadoraSeleccionada = null;
+      document.getElementById('gol-modal').style.display = 'none';
+      mostrarModalGolTipo();
+    });
+
+    document.getElementById('btn-gol-cancelar').addEventListener('click', () => {
+      document.getElementById('gol-modal').style.display = 'none';
+      golJugadoraSeleccionada = null;
+    });
+
+    // Tipo de gol a favor
+    document.querySelectorAll('#gol-tipo-modal .gol-tipo-btn').forEach(b => {
+      b.addEventListener('click', async (e) => {
+        const subtipo = e.currentTarget.dataset.subtipo;
+        document.getElementById('gol-tipo-modal').style.display = 'none';
+        await fetch(`/partido/${partidoId}/gol`, {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({tipo: 'favor', jugadora_id: golJugadoraSeleccionada, subtipo: subtipo})
+        }).then(r => r.json()).then(renderEstado);
+        golJugadoraSeleccionada = null;
+      });
+    });
+
+    document.getElementById('btn-gol-tipo-cancelar').addEventListener('click', () => {
+      document.getElementById('gol-tipo-modal').style.display = 'none';
+      golJugadoraSeleccionada = null;
+    });
+
+    // Tipo de gol en contra
+    document.querySelectorAll('#gol-contra-modal .gol-tipo-btn').forEach(b => {
+      b.addEventListener('click', async (e) => {
+        const subtipo = e.currentTarget.dataset.subtipo;
+        document.getElementById('gol-contra-modal').style.display = 'none';
+        await fetch(`/partido/${partidoId}/gol`, {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({tipo: 'contra', subtipo: subtipo})
+        }).then(r => r.json()).then(renderEstado);
+      });
+    });
+
+    document.getElementById('btn-gol-contra-cancelar').addEventListener('click', () => {
+      document.getElementById('gol-contra-modal').style.display = 'none';
+    });
+
+    // Stats: ataque, tiro, córner (botones rápidos)
+    document.querySelectorAll('.stat-btn').forEach(b => {
+      b.addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        const tipo = btn.dataset.stat;
+        // Animación visual: pulso del botón
+        btn.classList.add('stat-pulse');
+        setTimeout(() => btn.classList.remove('stat-pulse'), 400);
+
+        await fetch(`/partido/${partidoId}/stat`, {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({tipo: tipo})
+        }).then(r => r.json()).then(renderEstado);
+      });
+    });
+  }
+
+  // Loop visual: actualiza cronómetro cada segundo (sin tocar el server)
+  intervaloUI = setInterval(actualizarCronometroLocal, 250);
+
+  // Refresca el estado del server cada 30s (por si el server tiene info más nueva)
+  setInterval(() => {
+    fetch(`/partido/${partidoId}/estado`).then(r => r.json()).then(renderEstado);
+  }, 30000);
+}
+</script>
+{% endblock %}
