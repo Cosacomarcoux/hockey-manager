@@ -1176,82 +1176,186 @@ input:focus, select:focus {
 }
 
 /* ==========================================================
-   PARTIDO EN VIVO — PANEL DE ESTADÍSTICAS
+   PARTIDO EN VIVO — PANEL DE ESTADÍSTICAS POR CUARTO
    ========================================================== */
-.stats-panel {
+.stats-panel-v2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
   margin-bottom: 16px;
 }
 
-.stats-column {
+.stats-side {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   padding: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  overflow-x: auto;
 }
 
-.stats-col-title {
+.stats-side-title {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--color-text-muted);
   font-weight: 700;
   text-align: center;
-  padding: 4px 0 6px;
+  padding: 4px 0 8px;
   border-bottom: 1px solid var(--color-border);
   word-break: break-word;
+  margin-bottom: 4px;
 }
 
-.stat-btn {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 14px;
-  border: 1px solid var(--color-border);
+.stats-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.stats-table th {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  padding: 6px 2px;
+  text-align: center;
+  letter-spacing: 0.3px;
+}
+
+.stats-th-label { text-align: left; padding-left: 4px; }
+.stats-th-q { width: 28px; }
+.stats-th-q.stats-th-active {
+  color: var(--color-primary-dark);
+  background: var(--color-success-bg);
+  border-radius: 4px;
+}
+.stats-th-total {
+  width: 32px;
+  color: var(--color-text);
+  border-left: 1px solid var(--color-border);
+  font-weight: 800;
+}
+.stats-th-action { width: 32px; }
+
+.stats-table td {
+  padding: 8px 2px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.stats-table tr:last-child td { border-bottom: none; }
+
+.stats-row-label {
+  text-align: left !important;
+  padding: 8px 4px !important;
+  font-weight: 500 !important;
+  color: var(--color-text);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.stats-cell {
+  color: var(--color-text-muted);
+  font-size: 14px;
+}
+
+.stats-cell.stats-active-col {
+  color: var(--color-primary-dark);
+  background: var(--color-success-bg);
+  font-weight: 700;
+}
+
+.stats-cell-total {
+  color: var(--color-text);
+  font-size: 15px;
+  font-weight: 800;
+  border-left: 1px solid var(--color-border);
+}
+
+.stats-add-btn {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--color-border-strong);
   background: var(--color-surface);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
+  font-size: 16px;
+  font-weight: 700;
   cursor: pointer;
   font-family: inherit;
-  font-size: 14px;
-  text-align: left;
+  color: var(--color-text);
   transition: all 0.15s;
-  position: relative;
+  padding: 0;
+  line-height: 1;
 }
-.stat-btn:hover:not(:disabled) {
-  border-color: var(--color-border-strong);
+.stats-add-btn:hover:not(:disabled) {
+  background: var(--color-success-bg);
+  border-color: var(--color-success-border);
+  color: var(--color-success-text);
+}
+.stats-add-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+.stats-add-btn:active:not(:disabled) { transform: scale(0.92); }
+
+.stats-row-gol td {
   background: var(--color-bg);
 }
-.stat-btn:active:not(:disabled) { transform: scale(0.97); }
-.stat-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-.stat-icon { font-size: 18px; flex-shrink: 0; }
-.stat-label { flex: 1; font-weight: 500; color: var(--color-text); }
-.stat-count {
-  font-variant-numeric: tabular-nums;
+.stats-row-gol .stats-row-label,
+.stats-row-gol .stats-cell-total {
   font-weight: 700;
-  font-size: 20px;
   color: var(--color-text);
-  min-width: 24px;
-  text-align: right;
 }
 
 .stat-pulse {
   animation: stat-pulse-anim 0.4s ease-out;
 }
 @keyframes stat-pulse-anim {
-  0% { background: var(--color-success-bg); transform: scale(1); }
-  50% { background: var(--color-success-bg); transform: scale(1.03); }
+  0% { background: var(--color-success-bg); transform: scale(1.2); }
   100% { background: var(--color-surface); transform: scale(1); }
 }
 
-@media (max-width: 600px) {
-  .stat-btn { padding: 10px 12px; font-size: 13px; }
-  .stat-count { font-size: 17px; }
+@media (max-width: 640px) {
+  .stats-panel-v2 { grid-template-columns: 1fr; }
+  .stats-table { font-size: 13px; }
+  .stats-row-label { font-size: 12px; }
+}
+
+/* ==========================================================
+   BOTÓN ELIMINAR EN LISTA DE PARTIDOS
+   ========================================================== */
+.match-card-wrapper {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.match-card-wrapper .match-card { flex: 1; }
+
+.match-delete-form {
+  display: flex;
+  align-items: stretch;
+}
+
+.match-delete-btn {
+  width: 44px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  font-size: 18px;
+  color: var(--color-text-muted);
+  transition: all 0.15s;
+  font-family: inherit;
+  padding: 0;
+}
+.match-delete-btn:hover {
+  background: var(--color-danger-bg);
+  border-color: var(--color-danger-border);
+  color: var(--color-danger-text);
 }
 
 /* ==========================================================

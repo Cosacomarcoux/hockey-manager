@@ -110,43 +110,117 @@
   {% endif %}
 
   <!-- Panel de estadísticas en vivo -->
-  <div class="stats-panel">
-    <div class="stats-column">
-      <div class="stats-col-title">Mi equipo</div>
-      <button class="stat-btn stat-ataque" data-stat="ataque_favor" {% if partido.estado != 'en_curso' %}disabled{% endif %}>
-        <span class="stat-icon">🟢</span>
-        <span class="stat-label">Ataque</span>
-        <span class="stat-count" id="cnt-ataque-favor">0</span>
-      </button>
-      <button class="stat-btn stat-tiro" data-stat="tiro_favor" {% if partido.estado != 'en_curso' %}disabled{% endif %}>
-        <span class="stat-icon">🎯</span>
-        <span class="stat-label">Tiro al arco</span>
-        <span class="stat-count" id="cnt-tiro-favor">0</span>
-      </button>
-      <button class="stat-btn stat-corner" data-stat="corner_favor" {% if partido.estado != 'en_curso' %}disabled{% endif %}>
-        <span class="stat-icon">🚩</span>
-        <span class="stat-label">Córner corto</span>
-        <span class="stat-count" id="cnt-corner-favor">0</span>
-      </button>
+  <div class="stats-panel-v2">
+    <!-- MI EQUIPO -->
+    <div class="stats-side">
+      <div class="stats-side-title">Mi equipo</div>
+      <table class="stats-table">
+        <thead>
+          <tr>
+            <th class="stats-th-label"></th>
+            <th class="stats-th-q {% if partido.cuarto_actual == 1 %}stats-th-active{% endif %}">Q1</th>
+            <th class="stats-th-q {% if partido.cuarto_actual == 2 %}stats-th-active{% endif %}">Q2</th>
+            <th class="stats-th-q {% if partido.cuarto_actual == 3 %}stats-th-active{% endif %}">Q3</th>
+            <th class="stats-th-q {% if partido.cuarto_actual == 4 %}stats-th-active{% endif %}">Q4</th>
+            <th class="stats-th-total">TOT</th>
+            <th class="stats-th-action"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr data-stat-row="ataque_favor">
+            <td class="stats-row-label">🟢 Ataque</td>
+            <td class="stats-cell" data-q="1">0</td>
+            <td class="stats-cell" data-q="2">0</td>
+            <td class="stats-cell" data-q="3">0</td>
+            <td class="stats-cell" data-q="4">0</td>
+            <td class="stats-cell-total">0</td>
+            <td><button class="stats-add-btn" data-stat="ataque_favor" {% if partido.estado != 'en_curso' %}disabled{% endif %}>+</button></td>
+          </tr>
+          <tr data-stat-row="tiro_favor">
+            <td class="stats-row-label">🎯 Tiro</td>
+            <td class="stats-cell" data-q="1">0</td>
+            <td class="stats-cell" data-q="2">0</td>
+            <td class="stats-cell" data-q="3">0</td>
+            <td class="stats-cell" data-q="4">0</td>
+            <td class="stats-cell-total">0</td>
+            <td><button class="stats-add-btn" data-stat="tiro_favor" {% if partido.estado != 'en_curso' %}disabled{% endif %}>+</button></td>
+          </tr>
+          <tr data-stat-row="corner_favor">
+            <td class="stats-row-label">🚩 Córner</td>
+            <td class="stats-cell" data-q="1">0</td>
+            <td class="stats-cell" data-q="2">0</td>
+            <td class="stats-cell" data-q="3">0</td>
+            <td class="stats-cell" data-q="4">0</td>
+            <td class="stats-cell-total">0</td>
+            <td><button class="stats-add-btn" data-stat="corner_favor" {% if partido.estado != 'en_curso' %}disabled{% endif %}>+</button></td>
+          </tr>
+          <tr data-stat-row="gol_favor" class="stats-row-gol">
+            <td class="stats-row-label">🏑 Gol</td>
+            <td class="stats-cell" data-q="1">0</td>
+            <td class="stats-cell" data-q="2">0</td>
+            <td class="stats-cell" data-q="3">0</td>
+            <td class="stats-cell" data-q="4">0</td>
+            <td class="stats-cell-total">0</td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
     </div>
 
-    <div class="stats-column">
-      <div class="stats-col-title">{{ partido.rival }}</div>
-      <button class="stat-btn stat-ataque" data-stat="ataque_contra" {% if partido.estado != 'en_curso' %}disabled{% endif %}>
-        <span class="stat-icon">🔴</span>
-        <span class="stat-label">Ataque</span>
-        <span class="stat-count" id="cnt-ataque-contra">0</span>
-      </button>
-      <button class="stat-btn stat-tiro" data-stat="tiro_contra" {% if partido.estado != 'en_curso' %}disabled{% endif %}>
-        <span class="stat-icon">🛡️</span>
-        <span class="stat-label">Tiro al arco</span>
-        <span class="stat-count" id="cnt-tiro-contra">0</span>
-      </button>
-      <button class="stat-btn stat-corner" data-stat="corner_contra" {% if partido.estado != 'en_curso' %}disabled{% endif %}>
-        <span class="stat-icon">⚠️</span>
-        <span class="stat-label">Córner corto</span>
-        <span class="stat-count" id="cnt-corner-contra">0</span>
-      </button>
+    <!-- RIVAL -->
+    <div class="stats-side">
+      <div class="stats-side-title">{{ partido.rival }}</div>
+      <table class="stats-table">
+        <thead>
+          <tr>
+            <th class="stats-th-label"></th>
+            <th class="stats-th-q {% if partido.cuarto_actual == 1 %}stats-th-active{% endif %}">Q1</th>
+            <th class="stats-th-q {% if partido.cuarto_actual == 2 %}stats-th-active{% endif %}">Q2</th>
+            <th class="stats-th-q {% if partido.cuarto_actual == 3 %}stats-th-active{% endif %}">Q3</th>
+            <th class="stats-th-q {% if partido.cuarto_actual == 4 %}stats-th-active{% endif %}">Q4</th>
+            <th class="stats-th-total">TOT</th>
+            <th class="stats-th-action"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr data-stat-row="ataque_contra">
+            <td class="stats-row-label">🔴 Ataque</td>
+            <td class="stats-cell" data-q="1">0</td>
+            <td class="stats-cell" data-q="2">0</td>
+            <td class="stats-cell" data-q="3">0</td>
+            <td class="stats-cell" data-q="4">0</td>
+            <td class="stats-cell-total">0</td>
+            <td><button class="stats-add-btn" data-stat="ataque_contra" {% if partido.estado != 'en_curso' %}disabled{% endif %}>+</button></td>
+          </tr>
+          <tr data-stat-row="tiro_contra">
+            <td class="stats-row-label">🛡️ Tiro</td>
+            <td class="stats-cell" data-q="1">0</td>
+            <td class="stats-cell" data-q="2">0</td>
+            <td class="stats-cell" data-q="3">0</td>
+            <td class="stats-cell" data-q="4">0</td>
+            <td class="stats-cell-total">0</td>
+            <td><button class="stats-add-btn" data-stat="tiro_contra" {% if partido.estado != 'en_curso' %}disabled{% endif %}>+</button></td>
+          </tr>
+          <tr data-stat-row="corner_contra">
+            <td class="stats-row-label">⚠️ Córner</td>
+            <td class="stats-cell" data-q="1">0</td>
+            <td class="stats-cell" data-q="2">0</td>
+            <td class="stats-cell" data-q="3">0</td>
+            <td class="stats-cell" data-q="4">0</td>
+            <td class="stats-cell-total">0</td>
+            <td><button class="stats-add-btn" data-stat="corner_contra" {% if partido.estado != 'en_curso' %}disabled{% endif %}>+</button></td>
+          </tr>
+          <tr data-stat-row="gol_contra" class="stats-row-gol">
+            <td class="stats-row-label">❌ Gol</td>
+            <td class="stats-cell" data-q="1">0</td>
+            <td class="stats-cell" data-q="2">0</td>
+            <td class="stats-cell" data-q="3">0</td>
+            <td class="stats-cell" data-q="4">0</td>
+            <td class="stats-cell-total">0</td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   </div>
 
@@ -178,8 +252,21 @@
   {% if partido.estado == 'en_curso' %}
   <div class="match-end-section">
     <form method="POST" action="{{ url_for('partido_finalizar', partido_id=partido.id) }}"
-          onsubmit="return confirm('¿Finalizar el partido? Después podés reanudarlo si necesitás.')">
+          onsubmit="return confirm('¿Finalizar el partido? Después podés reanudarlo si necesitás.')"
+          style="display: inline-block;">
       <button type="submit" class="btn btn-secondary">🏁 Finalizar partido</button>
+    </form>
+    <form method="POST" action="{{ url_for('partido_eliminar', partido_id=partido.id) }}"
+          onsubmit="return confirm('¿Eliminar el partido vs {{ partido.rival }}? Se borrarán todos los eventos, convocatorias y estadísticas. Esta acción no se puede deshacer.')"
+          style="display: inline-block; margin-left: 8px;">
+      <button type="submit" class="link-delete">🗑️ Eliminar partido</button>
+    </form>
+  </div>
+  {% elif partido.estado == 'finalizado' %}
+  <div class="match-end-section">
+    <form method="POST" action="{{ url_for('partido_eliminar', partido_id=partido.id) }}"
+          onsubmit="return confirm('¿Eliminar el partido vs {{ partido.rival }}? Se borrarán todos los eventos, convocatorias y estadísticas. Esta acción no se puede deshacer.')">
+      <button type="submit" class="link-delete">🗑️ Eliminar partido</button>
     </form>
   </div>
   {% endif %}
@@ -188,7 +275,7 @@
 <!-- Modal para gol a favor: paso 1 elegir jugadora -->
 <div class="modal-overlay" id="gol-modal" style="display: none;">
   <div class="modal-card">
-    <h3>⚽ Gol a favor — ¿Quién lo hizo?</h3>
+    <h3>🏑 Gol a favor — ¿Quién lo hizo?</h3>
     <p class="muted">Tocá la jugadora que convirtió:</p>
     <div class="modal-players" id="modal-players"></div>
     <div class="modal-actions">
@@ -205,7 +292,7 @@
     <p class="muted">Elegí cómo se convirtió:</p>
     <div class="gol-tipo-buttons">
       <button class="gol-tipo-btn" data-subtipo="jugada">
-        <span class="gol-tipo-emoji">⚽</span>
+        <span class="gol-tipo-emoji">🏑</span>
         <span class="gol-tipo-label">De jugada</span>
       </button>
       <button class="gol-tipo-btn" data-subtipo="corner_corto">
@@ -230,7 +317,7 @@
     <p class="muted">Elegí cómo nos lo hicieron:</p>
     <div class="gol-tipo-buttons">
       <button class="gol-tipo-btn" data-subtipo="jugada">
-        <span class="gol-tipo-emoji">⚽</span>
+        <span class="gol-tipo-emoji">🏑</span>
         <span class="gol-tipo-label">De jugada</span>
       </button>
       <button class="gol-tipo-btn" data-subtipo="corner_corto">
@@ -304,14 +391,34 @@ if (liveApp) {
     document.getElementById('clock-cuarto').textContent = `Q${data.cuarto_actual}`;
     document.getElementById('clock-time').textContent = formatoTiempo(data.cronometro_segundos);
 
-    // Actualizar contadores de stats
-    if (data.stats) {
-      document.getElementById('cnt-ataque-favor').textContent = data.stats.ataque_favor;
-      document.getElementById('cnt-ataque-contra').textContent = data.stats.ataque_contra;
-      document.getElementById('cnt-tiro-favor').textContent = data.stats.tiro_favor;
-      document.getElementById('cnt-tiro-contra').textContent = data.stats.tiro_contra;
-      document.getElementById('cnt-corner-favor').textContent = data.stats.corner_favor;
-      document.getElementById('cnt-corner-contra').textContent = data.stats.corner_contra;
+    // Actualizar tabla de stats por cuarto
+    if (data.stats_por_cuarto) {
+      const tipos = ['ataque_favor', 'tiro_favor', 'corner_favor', 'gol_favor',
+                     'ataque_contra', 'tiro_contra', 'corner_contra', 'gol_contra'];
+      tipos.forEach(tipo => {
+        const row = document.querySelector(`[data-stat-row="${tipo}"]`);
+        if (!row) return;
+        const stats = data.stats_por_cuarto[tipo];
+        for (let q = 1; q <= 4; q++) {
+          const cell = row.querySelector(`[data-q="${q}"]`);
+          if (cell) cell.textContent = stats[String(q)] || 0;
+        }
+        const totCell = row.querySelector('.stats-cell-total');
+        if (totCell) totCell.textContent = stats.total;
+      });
+
+      // Resaltar la columna del cuarto actual
+      document.querySelectorAll('.stats-th-q, .stats-cell').forEach(el => {
+        el.classList.remove('stats-active-col');
+      });
+      document.querySelectorAll(`[data-q="${data.cuarto_actual}"]`).forEach(el => {
+        el.classList.add('stats-active-col');
+      });
+      document.querySelectorAll('.stats-th-q').forEach((el, i) => {
+        if (i % 4 + 1 === data.cuarto_actual || (i+1) === data.cuarto_actual) {
+          // El header se controla con la clase stats-th-active desde el server-side
+        }
+      });
     }
 
     const btnPlayPause = document.getElementById('btn-play-pause');
@@ -523,7 +630,7 @@ if (liveApp) {
     });
 
     // Stats: ataque, tiro, córner (botones rápidos)
-    document.querySelectorAll('.stat-btn').forEach(b => {
+    document.querySelectorAll('.stats-add-btn').forEach(b => {
       b.addEventListener('click', async (e) => {
         const btn = e.currentTarget;
         const tipo = btn.dataset.stat;
