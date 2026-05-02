@@ -1,1 +1,43 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Hockey Manager{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  {% if session.entrenador_id %}
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="{{ url_for('plantel') }}" class="nav-brand">🏑 Hockey Manager</a>
+      <div class="nav-links">
+        <a href="{{ url_for('plantel') }}" class="{% if request.endpoint == 'plantel' %}active{% endif %}">Plantel</a>
+        <a href="{{ url_for('asistencia') }}" class="{% if request.endpoint == 'asistencia' %}active{% endif %}">Asistencia</a>
+        <a href="{{ url_for('partidos') }}" class="{% if request.endpoint and 'partido' in request.endpoint %}active{% endif %}">Partidos</a>
+        <a href="{{ url_for('estadisticas') }}" class="{% if request.endpoint and 'estadistica' in request.endpoint %}active{% endif %}">Estadísticas</a>
+        <a href="{{ url_for('historial') }}" class="{% if request.endpoint == 'historial' %}active{% endif %}">Historial</a>
+      </div>
+      <div class="nav-user">
+        <span class="nav-user-name">{{ entrenador.nombre }}</span>
+        <a href="{{ url_for('logout') }}" class="nav-logout">Salir</a>
+      </div>
+    </div>
+  </nav>
+  {% endif %}
 
+  <main class="container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="flash flash-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>

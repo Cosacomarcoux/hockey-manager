@@ -1,1 +1,114 @@
+{% extends "base.html" %}
+{% block title %}{{ jugadora.nombre }} {{ jugadora.apellido }} - Estadísticas{% endblock %}
 
+{% block content %}
+<div class="page-header">
+  <div class="player-header">
+    <div class="convocada-avatar" style="width: 56px; height: 56px; font-size: 18px;">{{ jugadora.iniciales }}</div>
+    <div>
+      <h1>{{ jugadora.nombre }} {{ jugadora.apellido }}</h1>
+      {% if jugadora.apodo %}<div class="muted">"{{ jugadora.apodo }}"</div>{% endif %}
+      <div class="player-header-meta">
+        <span class="pill pill-primary">{{ jugadora.posicion }}</span>
+        {% if jugadora.posicion_alt %}<span class="pill pill-secondary">{{ jugadora.posicion_alt }}</span>{% endif %}
+      </div>
+    </div>
+  </div>
+  <a href="{{ url_for('estadisticas', periodo=periodo) }}" class="link-edit">← Volver</a>
+</div>
+
+<div class="periodo-bar">
+  <div class="periodo-label">{{ periodo_label }}</div>
+  <div class="periodo-tabs">
+    <a href="{{ url_for('jugadora_estadisticas', jugadora_id=jugadora.id, periodo='mes') }}" class="periodo-tab {% if periodo == 'mes' %}active{% endif %}">Este mes</a>
+    <a href="{{ url_for('jugadora_estadisticas', jugadora_id=jugadora.id, periodo='mes_anterior') }}" class="periodo-tab {% if periodo == 'mes_anterior' %}active{% endif %}">Mes anterior</a>
+    <a href="{{ url_for('jugadora_estadisticas', jugadora_id=jugadora.id, periodo='anio') }}" class="periodo-tab {% if periodo == 'anio' %}active{% endif %}">Este año</a>
+    <a href="{{ url_for('jugadora_estadisticas', jugadora_id=jugadora.id, periodo='todos') }}" class="periodo-tab {% if periodo == 'todos' %}active{% endif %}">Todos</a>
+  </div>
+</div>
+
+{% if stats.pc == 0 %}
+<div class="empty-state">
+  <p>{{ jugadora.nombre }} no fue convocada a partidos en este período.</p>
+</div>
+{% else %}
+
+<div class="stats-summary">
+  <div class="stat-card">
+    <div class="stat-label">Convocada</div>
+    <div class="stat-value">{{ stats.pc }}</div>
+    <div class="stat-sub">{{ "partido" if stats.pc == 1 else "partidos" }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Jugó</div>
+    <div class="stat-value">{{ stats.pj }}</div>
+    <div class="stat-sub">{{ "partido" if stats.pj == 1 else "partidos" }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Minutos</div>
+    <div class="stat-value">{{ stats.minutos }}'</div>
+    <div class="stat-sub">en cancha</div>
+  </div>
+  <div class="stat-card stat-card-highlight">
+    <div class="stat-label">Goles</div>
+    <div class="stat-value">{{ stats.goles }}</div>
+    <div class="stat-sub">total</div>
+  </div>
+</div>
+
+{% if stats.goles > 0 %}
+<h2 class="section-title">Desglose de goles</h2>
+<div class="goles-breakdown">
+  <div class="goles-tipo-card">
+    <div class="goles-tipo-icon">🏑</div>
+    <div class="goles-tipo-info">
+      <div class="goles-tipo-num">{{ stats.goles_jugada }}</div>
+      <div class="goles-tipo-label">de jugada</div>
+    </div>
+  </div>
+  <div class="goles-tipo-card">
+    <div class="goles-tipo-icon">🚩</div>
+    <div class="goles-tipo-info">
+      <div class="goles-tipo-num">{{ stats.goles_corner }}</div>
+      <div class="goles-tipo-label">de córner corto</div>
+    </div>
+  </div>
+  <div class="goles-tipo-card">
+    <div class="goles-tipo-icon">🎯</div>
+    <div class="goles-tipo-info">
+      <div class="goles-tipo-num">{{ stats.goles_penal }}</div>
+      <div class="goles-tipo-label">de penal</div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<h2 class="section-title">Detalle por partido</h2>
+<div class="match-detail-list">
+  {% for d in stats.detalle %}
+  <a href="{{ url_for('partido_detalle', partido_id=d.partido.id) }}" class="match-detail-card">
+    <div class="match-detail-header">
+      <div class="match-detail-rival">vs {{ d.partido.rival }}</div>
+      <div class="match-detail-result">{{ d.partido.resultado_str }}</div>
+    </div>
+    <div class="match-detail-meta">
+      <span>{{ d.partido.fecha.strftime('%d %b %Y') }}</span>
+      <span class="match-dot">·</span>
+      <span>{{ d.partido.lugar }}</span>
+    </div>
+    <div class="match-detail-stats">
+      {% if d.jugo %}
+        <span class="ms-played">⏱ {{ d.minutos }}'</span>
+      {% else %}
+        <span class="ms-bench">🪑 No jugó</span>
+      {% endif %}
+      {% if d.goles > 0 %}
+        <span class="ms-goal">🏑 {{ d.goles }} {{ "gol" if d.goles == 1 else "goles" }}</span>
+      {% endif %}
+    </div>
+  </a>
+  {% endfor %}
+</div>
+
+{% endif %}
+{% endblock %}

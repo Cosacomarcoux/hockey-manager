@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}Plan del partido - vs {{ partido.rival }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Plan del partido</h1>
+    <div class="match-meta">
+      vs {{ partido.rival }} · {{ partido.fecha.strftime('%d %b %Y') }}
+    </div>
+  </div>
+  <a href="{{ url_for('rotacion_configurar', partido_id=partido.id) }}" class="link-edit">⚙ Cambiar configuración</a>
+</div>
+
+<div class="plan-summary">
+  <div class="plan-config-pill">K = {{ config.K }}</div>
+  <div class="plan-config-pill">Formación {{ config.formacion }}</div>
+  <div class="plan-config-pill">Modo {{ config.modo|capitalize }}</div>
+  <div class="plan-config-pill">Umbral {{ config.umbral_cambio_minutos }}'</div>
+  {% if config.anclas_set %}
+  <div class="plan-config-pill plan-config-anchor">⚓ {{ config.anclas_set|length }} {{ "ancla" if config.anclas_set|length == 1 else "anclas" }}</div>
+  {% endif %}
+</div>
+
+<div class="plan-explainer">
+  <p>
+    El algoritmo calculó la <strong>prioridad</strong> de cada jugadora con la fórmula
+    <code>P = (capacidad/5)·K + (asistencia/100)·(1−K)</code> y repartió los 660 minutos del partido
+    entre las jugadoras de cada posición proporcionalmente. Estos son los <strong>titulares automáticos</strong>
+    según la formación elegida.
+  </p>
+</div>
+
+{% for pos in pos_order %}
+{% set posicion_data = grupos[pos] if pos in grupos else None %}
+{% if not posicion_data %}
+  {# Acceso por valor del Enum a través del template helper #}
+{% endif %}
+{% endfor %}
+
+{# Iteramos en el orden definido y accedemos al diccionario por el objeto enum directamente #}
+{% for pos_obj, datos in grupos.items() %}
+<div class="plan-position-section">
+  <h2 class="plan-pos-title">{{ pos_obj.value }}</h2>
+
+  {% if datos.titulares %}
+  <div class="plan-subgroup">
+    <div class="plan-subgroup-title">🟢 Titulares ({{ datos.titulares|length }})</div>
+    <div class="plan-players-list">
+      {% for p in datos.titulares %}
+      <div class="plan-player-row">
+        <div class="convocada-avatar avatar-sm">{{ (p.nombre[0] + p.apellido[0])|upper }}</div>
+        <div class="plan-player-info">
+          <div class="plan-player-name">
+            {{ p.nombre }} {{ p.apellido }}
+            {% if p.es_ancla %}<span class="plan-ancla-tag">⚓ ANCLA</span>{% endif %}
+          </div>
+          <div class="plan-player-meta">
+            cap {{ p.capacidad }}/5 · asist {{ p.asistencia|round|int }}%
+          </div>
+        </div>
+        <div class="plan-prioridad">
+          <div class="plan-pri-label">Prioridad</div>
+          <div class="plan-pri-value">{{ "%.2f"|format(p.prioridad) }}</div>
+        </div>
+        <div class="plan-minutos">
+          <div class="plan-min-label">Min teóricos</div>
+          <div class="plan-min-value">{{ p.minutos_teoricos|round|int }}'</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if datos.banco %}
+  <div class="plan-subgroup">
+    <div class="plan-subgroup-title">🪑 Banco ({{ datos.banco|length }})</div>
+    <div class="plan-players-list">
+      {% for p in datos.banco %}
+      <div class="plan-player-row plan-player-suplente">
+        <div class="convocada-avatar avatar-sm">{{ (p.nombre[0] + p.apellido[0])|upper }}</div>
+        <div class="plan-player-info">
+          <div class="plan-player-name">{{ p.nombre }} {{ p.apellido }}</div>
+          <div class="plan-player-meta">
+            cap {{ p.capacidad }}/5 · asist {{ p.asistencia|round|int }}%
+          </div>
+        </div>
+        <div class="plan-prioridad">
+          <div class="plan-pri-label">Prioridad</div>
+          <div class="plan-pri-value">{{ "%.2f"|format(p.prioridad) }}</div>
+        </div>
+        <div class="plan-minutos">
+          <div class="plan-min-label">Min teóricos</div>
+          <div class="plan-min-value">{{ p.minutos_teoricos|round|int }}'</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if datos.no_convocadas %}
+  <div class="plan-subgroup plan-subgroup-noconv">
+    <div class="plan-subgroup-title">⚪ No convocadas ({{ datos.no_convocadas|length }})</div>
+    <div class="plan-players-list">
+      {% for p in datos.no_convocadas %}
+      <div class="plan-player-row plan-player-noconv">
+        <div class="convocada-avatar avatar-sm">{{ (p.nombre[0] + p.apellido[0])|upper }}</div>
+        <div class="plan-player-info">
+          <div class="plan-player-name muted">{{ p.nombre }} {{ p.apellido }}</div>
+          <div class="plan-player-meta">
+            cap {{ p.capacidad }}/5 · asist {{ p.asistencia|round|int }}%
+          </div>
+        </div>
+        <div class="plan-prioridad">
+          <div class="plan-pri-label">Prioridad</div>
+          <div class="plan-pri-value muted">{{ "%.2f"|format(p.prioridad) }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endfor %}
+
+<div class="plan-actions">
+  <a href="{{ url_for('rotacion_configurar', partido_id=partido.id) }}" class="btn btn-secondary">⚙ Modificar configuración</a>
+  <a href="{{ url_for('partido_detalle', partido_id=partido.id) }}" class="btn btn-primary">Volver al partido</a>
+</div>
+
+<div class="plan-footer-note">
+  <p class="muted small">
+    💡 <strong>Etapa 1</strong>: Esto es solo el plan teórico. La aplicación de las sugerencias
+    durante el partido en vivo se habilita en la próxima actualización. Por ahora, podés usar
+    estos minutos como guía mental para tus cambios manuales.
+  </p>
+</div>
+{% endblock %}

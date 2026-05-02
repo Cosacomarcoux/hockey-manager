@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}Configurar rotación - vs {{ partido.rival }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Configurar rotación</h1>
+    <div class="match-meta">
+      vs {{ partido.rival }} · {{ partido.fecha.strftime('%d %b %Y') }}
+    </div>
+  </div>
+  <a href="{{ url_for('partido_detalle', partido_id=partido.id) }}" class="link-edit">← Volver al partido</a>
+</div>
+
+<form method="POST" class="form-card">
+
+  <div class="rotacion-section">
+    <h3 class="rotacion-section-title">Factor de competitividad (K)</h3>
+    <p class="hint">
+      Más alto = más prioridad a la capacidad. Más bajo = la asistencia gana algo de peso.
+    </p>
+    <div class="k-slider-row">
+      <span class="k-label-min">0.6<br><span class="k-label-sub">Formativo</span></span>
+      <input type="range" name="K" id="k-input" min="0.6" max="0.9" step="0.05"
+             value="{{ config.K if config else 0.7 }}" oninput="document.getElementById('k-display').textContent = this.value">
+      <span class="k-label-max">0.9<br><span class="k-label-sub">Competitivo</span></span>
+    </div>
+    <div class="k-display-wrapper">
+      K = <span id="k-display">{{ config.K if config else 0.7 }}</span>
+    </div>
+  </div>
+
+  <div class="rotacion-section">
+    <h3 class="rotacion-section-title">Formación</h3>
+    <p class="hint">Cómo se reparten las jugadoras en cancha.</p>
+    <div class="formacion-grid">
+      {% for f in formaciones %}
+      <label class="formacion-option">
+        <input type="radio" name="formacion" value="{{ f }}"
+               {% if (config and config.formacion == f) or (not config and f == '4-3-3') %}checked{% endif %}>
+        <span class="formacion-name">{{ f }}</span>
+      </label>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="rotacion-section">
+    <h3 class="rotacion-section-title">Modo de rotación</h3>
+    <p class="hint">Cómo se sugieren los cambios durante el partido.</p>
+    <div class="modo-options">
+      <label class="modo-option">
+        <input type="radio" name="modo" value="libre"
+               {% if not config or config.modo == 'libre' %}checked{% endif %}>
+        <div class="modo-content">
+          <div class="modo-name">Libre</div>
+          <div class="modo-desc">Sugerencias individuales por prioridad. Recomendado para empezar.</div>
+        </div>
+      </label>
+      <label class="modo-option modo-disabled">
+        <input type="radio" name="modo" value="celulas" disabled>
+        <div class="modo-content">
+          <div class="modo-name">Células <span class="badge-soon">Próximamente</span></div>
+          <div class="modo-desc">Rotación de parejas/tríos predefinidos.</div>
+        </div>
+      </label>
+      <label class="modo-option modo-disabled">
+        <input type="radio" name="modo" value="bloques" disabled>
+        <div class="modo-content">
+          <div class="modo-name">Bloques <span class="badge-soon">Próximamente</span></div>
+          <div class="modo-desc">Cambia toda una línea cada X minutos.</div>
+        </div>
+      </label>
+    </div>
+  </div>
+
+  <div class="rotacion-section">
+    <h3 class="rotacion-section-title">Umbral de cambio</h3>
+    <p class="hint">Después de cuántos minutos seguidos en cancha sugerir un cambio.</p>
+    <div class="umbral-row">
+      <input type="number" name="umbral" min="2" max="15" step="0.5"
+             value="{{ config.umbral_cambio_minutos if config else 5.0 }}" class="umbral-input">
+      <span>minutos</span>
+    </div>
+  </div>
+
+  <div class="rotacion-section">
+    <h3 class="rotacion-section-title">Anclas <span class="badge-info">No rotan</span></h3>
+    <p class="hint">
+      Marcá las jugadoras que NO querés que el sistema sugiera cambiar (ej. defensoras centrales,
+      arquera). Solo aparecen las convocadas a este partido.
+    </p>
+    {% if jugadoras_convocadas|length == 0 %}
+    <div class="empty-state-small">
+      Este partido no tiene jugadoras convocadas. Editá el partido para agregar convocadas primero.
+    </div>
+    {% else %}
+    <div class="anclas-list">
+      {% for j in jugadoras_convocadas %}
+      <label class="ancla-item">
+        <input type="checkbox" name="anclas" value="{{ j.id }}"
+               {% if config and j.id in config.anclas_set %}checked{% endif %}>
+        <div class="convocada-avatar avatar-sm">{{ j.iniciales }}</div>
+        <div class="ancla-info">
+          <div class="ancla-name">{{ j.nombre }} {{ j.apellido }}</div>
+          <div class="ancla-meta">
+            <span class="pill pill-primary">{{ j.posicion }}</span>
+            <span class="muted small">cap {{ j.calificacion }}/5</span>
+          </div>
+        </div>
+      </label>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="form-actions">
+    <a href="{{ url_for('partido_detalle', partido_id=partido.id) }}" class="btn btn-secondary">Cancelar</a>
+    <button type="submit" class="btn btn-primary">Guardar y ver plan</button>
+  </div>
+</form>
+{% endblock %}

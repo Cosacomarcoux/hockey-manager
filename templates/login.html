@@ -1,1 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Ingresar - Hockey Manager{% endblock %}
 
+{% block content %}
+<div class="auth-card">
+  <h1 class="auth-title">🏑 Hockey Manager</h1>
+  <p class="auth-subtitle">Ingresá a tu cuenta de entrenador</p>
+
+  <form method="POST" class="auth-form">
+    <label>
+      <span>Email</span>
+      <input type="email" name="email" required autofocus>
+    </label>
+    <label>
+      <span>Contraseña</span>
+      <input type="password" name="password" required>
+    </label>
+    <button type="submit" class="btn btn-primary">Ingresar</button>
+  </form>
+
+  <p class="auth-footer">
+    ¿No tenés cuenta? <a href="{{ url_for('registro') }}">Registrate acá</a>
+  </p>
+</div>
+{% endblock %}
