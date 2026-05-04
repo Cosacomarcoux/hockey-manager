@@ -1,1 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Configurar plan - vs {{ partido.rival }}{% endblock %}
 
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Configurar plan de turnos</h1>
+    <div class="match-meta">
+      vs {{ partido.rival }} · {{ partido.fecha.strftime('%d %b %Y') }}
+    </div>
+  </div>
+  <a href="{{ url_for('partido_detalle', partido_id=partido.id) }}" class="link-edit">← Volver al partido</a>
+</div>
+
+<div class="plan-explainer">
+  <p>
+    El planificador divide los 60 minutos del partido en turnos iguales y te ayuda a
+    asignar jugadoras a cada turno. Para arrancar, elegí la duración de cada turno y
+    si querés que el sistema te genere una propuesta inicial automática.
+  </p>
+</div>
+
+<form method="POST" class="form-card">
+  <div class="rotacion-section">
+    <h3 class="rotacion-section-title">Duración del turno</h3>
+    <p class="hint">Elegí entre 3 y 7.5 minutos. Cuanto más cortos, más turnos para planificar.</p>
+
+    <div class="duracion-options">
+      {% set opciones = [
+        (3.0, '3 min', '20 turnos'),
+        (4.0, '4 min', '15 turnos'),
+        (5.0, '5 min', '12 turnos'),
+        (6.0, '6 min', '10 turnos'),
+        (7.5, '7.5 min', '8 turnos')
+      ] %}
+      {% for valor, etiqueta, sub in opciones %}
+      <label class="duracion-option">
+        <input type="radio" name="duracion_turno" value="{{ valor }}"
+               {% if duracion_actual == valor %}checked{% elif loop.first and duracion_actual == 5.0 %}{% endif %}
+               {% if not plan and valor == 5.0 %}checked{% endif %}>
+        <div class="duracion-content">
+          <div class="duracion-label">{{ etiqueta }}</div>
+          <div class="duracion-sub">{{ sub }}</div>
+        </div>
+      </label>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="rotacion-section">
+    <h3 class="rotacion-section-title">¿Generar plan automático?</h3>
+    <p class="hint">
+      El sistema usa los minutos teóricos de cada jugadora (calculados con K, formación y prioridad)
+      para asignar la cantidad de turnos correspondiente, respetando las anclas.
+    </p>
+
+    <div class="auto-options">
+      <label class="auto-option">
+        <input type="radio" name="generar_auto" value="1" {% if not tiene_asignaciones %}checked{% endif %}>
+        <div class="auto-content">
+          <div class="auto-label">💡 Sí, generar plan automático</div>
+          <div class="auto-sub">Recomendado si arrancás. Después podés ajustar manualmente.</div>
+        </div>
+      </label>
+      {% if tiene_asignaciones %}
+      <label class="auto-option">
+        <input type="radio" name="generar_auto" value="0" checked>
+        <div class="auto-content">
+          <div class="auto-label">Mantener plan actual</div>
+          <div class="auto-sub">Solo cambia la duración del turno (sin tocar las asignaciones).</div>
+        </div>
+      </label>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if tiene_asignaciones %}
+  <div class="warning-box" style="margin-bottom: 16px;">
+    ⚠️ Si elegís "generar automático" o cambiás la duración, se borrarán las asignaciones actuales.
+  </div>
+  {% endif %}
+
+  <div class="form-actions">
+    <a href="{{ url_for('partido_detalle', partido_id=partido.id) }}" class="btn btn-secondary">Cancelar</a>
+    <button type="submit" class="btn btn-primary">
+      {% if tiene_asignaciones %}Guardar cambios{% else %}Crear plan{% endif %}
+    </button>
+  </div>
+</form>
+
+<div class="rotacion-cta-info">
+  <p class="muted small">
+    📊 Configuración de rotación actual: K = {{ config.K }} · Formación {{ config.formacion }}
+    {% if config.anclas_set %} · {{ config.anclas_set|length }} {{ "ancla" if config.anclas_set|length == 1 else "anclas" }}{% endif %}
+    · <a href="{{ url_for('rotacion_configurar', partido_id=partido.id) }}" class="link-edit" style="padding: 0;">cambiar</a>
+  </p>
+</div>
+{% endblock %}
