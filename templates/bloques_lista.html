@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}Bloques - vs {{ partido.rival }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Bloques de rotación</h1>
+    <div class="match-meta">
+      vs {{ partido.rival }} · {{ partido.fecha.strftime('%d %b %Y') }}
+    </div>
+  </div>
+  <a href="{{ url_for('partido_detalle', partido_id=partido.id) }}" class="link-edit">← Volver al partido</a>
+</div>
+
+<div class="plan-explainer">
+  <p>
+    Los bloques son grupos de 2 o más jugadoras que rotan juntas. Cuando hagas un swap
+    de una jugadora del bloque, la app te va a preguntar si querés mover el bloque entero.
+    Una jugadora puede pertenecer a varios bloques.
+  </p>
+</div>
+
+{% if bloques %}
+<div class="bloques-lista">
+  {% for b in bloques %}
+  <div class="bloque-card bloque-color-{{ b.color }}">
+    <div class="bloque-header">
+      <div class="bloque-icon">B{{ loop.index }}</div>
+      <div class="bloque-info">
+        <div class="bloque-nombre">{{ b.nombre }}</div>
+        <div class="bloque-meta muted small">
+          {{ b.miembros|length }} jugadora{% if b.miembros|length != 1 %}s{% endif %}
+        </div>
+      </div>
+      <button type="button" class="btn-link"
+              onclick="document.getElementById('editar-{{ b.id }}').classList.toggle('hidden')">
+        Editar
+      </button>
+    </div>
+
+    <div class="bloque-jugadoras">
+      {% for m in b.miembros %}
+      <span class="bloque-tag">
+        {{ m.jugadora.nombre }} {{ m.jugadora.apellido }}
+        <span class="muted">· {{ m.jugadora.posicion }}</span>
+      </span>
+      {% endfor %}
+    </div>
+
+    <!-- Form de edición (oculto por default) -->
+    <form method="POST" action="{{ url_for('bloque_editar', partido_id=partido.id, bloque_id=b.id) }}"
+          id="editar-{{ b.id }}" class="bloque-form-editar hidden">
+      <div class="form-row">
+        <label>Nombre</label>
+        <input type="text" name="nombre" value="{{ b.nombre }}" required>
+      </div>
+      <div class="form-row">
+        <label>Color</label>
+        <div class="color-options">
+          {% for c in colores %}
+          <label class="color-option">
+            <input type="radio" name="color" value="{{ c }}" {% if b.color == c %}checked{% endif %}>
+            <span class="color-swatch color-{{ c }}"></span>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="form-row">
+        <label>Jugadoras del bloque</label>
+        <div class="jugadoras-grid">
+          {% set ids_bloque = b.miembros | map(attribute='jugadora_id') | list %}
+          {% for j in jugadoras %}
+          <label class="jugadora-checkbox">
+            <input type="checkbox" name="jugadoras" value="{{ j.id }}"
+                   {% if j.id in ids_bloque %}checked{% endif %}>
+            <span class="jug-iniciales">{{ j.iniciales }}</span>
+            <span class="jug-name">{{ j.nombre }} {{ j.apellido }}</span>
+            <span class="jug-pos muted small">{{ j.posicion[:3] }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary"
+                onclick="document.getElementById('editar-{{ b.id }}').classList.add('hidden')">
+          Cancelar
+        </button>
+        <button type="submit" class="btn btn-primary">Guardar cambios</button>
+      </div>
+    </form>
+
+    <form method="POST" action="{{ url_for('bloque_eliminar', partido_id=partido.id, bloque_id=b.id) }}"
+          onsubmit="return confirm('¿Eliminar el bloque {{ b.nombre }}? Esto no afecta el plan ya armado.')"
+          style="display: inline;">
+      <button type="submit" class="btn-link btn-link-danger">Eliminar bloque</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+  <p>Todavía no hay bloques creados.</p>
+</div>
+{% endif %}
+
+<!-- Form para crear bloque nuevo -->
+<div class="bloque-card">
+  <h3 style="margin-top: 0;">+ Crear bloque nuevo</h3>
+  <form method="POST" action="{{ url_for('bloque_nuevo', partido_id=partido.id) }}">
+    <div class="form-row">
+      <label>Nombre del bloque</label>
+      <input type="text" name="nombre" placeholder="ej. Mediocentros, Pareja delantera..." required>
+    </div>
+
+    <div class="form-row">
+      <label>Color</label>
+      <div class="color-options">
+        {% for c in colores %}
+        <label class="color-option">
+          <input type="radio" name="color" value="{{ c }}" {% if loop.first %}checked{% endif %}>
+          <span class="color-swatch color-{{ c }}"></span>
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="form-row">
+      <label>Jugadoras del bloque (mínimo 2)</label>
+      {% if jugadoras %}
+      <div class="jugadoras-grid">
+        {% for j in jugadoras %}
+        <label class="jugadora-checkbox">
+          <input type="checkbox" name="jugadoras" value="{{ j.id }}">
+          <span class="jug-iniciales">{{ j.iniciales }}</span>
+          <span class="jug-name">{{ j.nombre }} {{ j.apellido }}</span>
+          <span class="jug-pos muted small">{{ j.posicion[:3] }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="muted small">Este partido no tiene convocadas todavía. Editá el partido para agregar.</p>
+      {% endif %}
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary" {% if not jugadoras %}disabled{% endif %}>
+        Crear bloque
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}
