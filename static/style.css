@@ -2982,3 +2982,133 @@ input:focus, select:focus {
   margin-left: 4px;
   vertical-align: middle;
 }
+
+/* ==========================================================
+   PLAN EN VIVO (cartel en pantalla del partido)
+   ========================================================== */
+.plan-vivo-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  border-left: 4px solid var(--color-info-text);
+}
+
+.plan-vivo-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.plan-vivo-turno {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.plan-vivo-label {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.plan-vivo-num {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.plan-vivo-link {
+  font-size: 12px;
+  color: var(--color-info-text);
+  text-decoration: none;
+}
+.plan-vivo-link:hover { text-decoration: underline; }
+
+.plan-vivo-cambios {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.plan-vivo-info-msg {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  padding: 8px 0;
+}
+
+.plan-vivo-cambio-row {
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  transition: all 0.2s;
+}
+
+.plan-vivo-cambio-tiempo {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 6px;
+}
+
+.plan-vivo-grupo {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.plan-vivo-grupo-label {
+  font-weight: 600;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.plan-vivo-jugadora {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.plan-vivo-sale {
+  background: #FCE7E7;
+  color: #8C1D18;
+}
+
+.plan-vivo-entra {
+  background: #DBF1E0;
+  color: #1B5C2D;
+}
+
+/* Estado de alarma (30s antes del cambio) */
+.plan-vivo-alarma {
+  background: #FFF5DA;
+  border-color: #EF9F27;
+  border-width: 2px;
+  animation: plan-vivo-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes plan-vivo-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 159, 39, 0.4); }
+  50%      { box-shadow: 0 0 0 8px rgba(239, 159, 39, 0); }
+}
+
+.plan-vivo-warning {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: #FFF5DA;
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  color: #6B4D08;
+  font-weight: 500;
+}
