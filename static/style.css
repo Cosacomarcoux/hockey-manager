@@ -3286,3 +3286,41 @@ input:focus, select:focus {
   .swap-ini { width: 26px; height: 26px; font-size: 10px; }
   .swap-badge { font-size: 9px; padding: 2px 4px; }
 }
+
+/* Botones de ajuste del cronómetro */
+.clock-ajuste {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+.clock-ajuste-btn {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 5px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-muted);
+  transition: all 0.15s;
+}
+.clock-ajuste-btn:hover {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border-color: var(--color-border-strong);
+}
+.clock-ajuste-btn:active {
+  transform: scale(0.95);
+}
+
+/* Botón "Listo, los hice" en zona de cambios */
+.btn-success {
+  background: var(--color-success-text);
+  color: white;
+  border: none;
+}
+.btn-success:hover { opacity: 0.85; }
+.btn-sm { padding: 6px 12px; font-size: 12px; }
