@@ -241,6 +241,19 @@
     </div>
   </div>
 
+  <!-- CARTEL DEL PLAN EN VIVO (turno actual + alarma de cambio) -->
+  <div id="plan-vivo-card" style="display: none;" class="plan-vivo-card">
+    <div class="plan-vivo-header">
+      <div class="plan-vivo-turno">
+        <span class="plan-vivo-label">Turno</span>
+        <span class="plan-vivo-num" id="plan-vivo-tnum">T1</span>
+      </div>
+      <a href="#" id="plan-vivo-link" class="plan-vivo-link">Ver plan completo</a>
+    </div>
+    <div id="plan-vivo-cambios" class="plan-vivo-cambios"></div>
+    <div id="plan-vivo-fuera-plan" class="plan-vivo-warning" style="display: none;"></div>
+  </div>
+
   <!-- Jugadoras -->
   <div class="players-section">
     <div class="players-header">
@@ -434,6 +447,9 @@ if (liveApp) {
     document.getElementById('score-contra').textContent = data.goles_contra;
     document.getElementById('clock-cuarto').textContent = `Q${data.cuarto_actual}`;
     document.getElementById('clock-time').textContent = formatoTiempo(data.cronometro_segundos);
+
+    // Actualizar cartel del plan en vivo
+    actualizarPlanEnVivo(data);
 
     // Actualizar tabla de stats por cuarto
     if (data.stats_por_cuarto) {
@@ -764,16 +780,162 @@ if (liveApp) {
     }
   }
 
+  // ============================================================
+  // PLAN EN VIVO: cartel + alarma 30s antes del cambio
+  // ============================================================
+  let alarmaSonada = false;       // para evitar repetir el sonido
+  let ultimoTurnoAlarma = null;   // para resetear cuando cambia el turno
+
+  function actualizarPlanEnVivo(data) {
+    const card = document.getElementById('plan-vivo-card');
+    const info = data.plan_en_vivo;
+
+    if (!info || !info.tiene_plan) {
+      card.style.display = 'none';
+      return;
+    }
+
+    card.style.display = 'block';
+
+    // Link al plan completo
+    document.getElementById('plan-vivo-link').href = `/partido/${partidoId}/planificador`;
+
+    // Turno actual
+    document.getElementById('plan-vivo-tnum').textContent = `T${info.turno_actual}`;
+
+    // Resetear alarma si cambió el turno
+    if (info.turno_actual !== ultimoTurnoAlarma) {
+      ultimoTurnoAlarma = info.turno_actual;
+      alarmaSonada = false;
+    }
+
+    // Cambios próximos
+    const contCambios = document.getElementById('plan-vivo-cambios');
+
+    if (!info.turno_proximo || !info.proximo_en_mismo_cuarto) {
+      // No hay próximo en este cuarto (estamos en último turno o cerca de descanso)
+      if (info.turno_proximo && !info.proximo_en_mismo_cuarto) {
+        contCambios.innerHTML = `
+          <div class="plan-vivo-info-msg">
+            ⏸ Próximo cambio (T${info.turno_proximo}) después del descanso del cuarto.
+          </div>
+        `;
+      } else {
+        contCambios.innerHTML = `
+          <div class="plan-vivo-info-msg">
+            🏁 Último turno del partido.
+          </div>
+        `;
+      }
+      return;
+    }
+
+    if (info.cambios_proximos.length === 0) {
+      contCambios.innerHTML = `
+        <div class="plan-vivo-info-msg">
+          ✓ Sin cambios planificados al pasar a T${info.turno_proximo}.
+        </div>
+      `;
+      return;
+    }
+
+    // Hay cambios planificados
+    const segs = info.segundos_hasta_cambio;
+    const minutos = Math.floor(segs / 60);
+    const segundos = segs % 60;
+    const tiempoTexto = minutos > 0
+      ? `${minutos}m ${String(segundos).padStart(2, '0')}s`
+      : `${segundos}s`;
+
+    // ¿Disparar alarma?
+    const enAlarma = segs !== null && segs <= 30 && segs > 0 && data.cronometro_corriendo;
+
+    if (enAlarma && !alarmaSonada) {
+      sonarAlarma();
+      alarmaSonada = true;
+    }
+
+    // Renderizar
+    const claseAlarma = enAlarma ? 'plan-vivo-alarma' : '';
+    const salen = info.cambios_proximos.filter(c => c.tipo === 'sale');
+    const entran = info.cambios_proximos.filter(c => c.tipo === 'entra');
+
+    contCambios.innerHTML = `
+      <div class="plan-vivo-cambio-row ${claseAlarma}">
+        <div class="plan-vivo-cambio-tiempo">
+          ${enAlarma ? '🔔' : '⏱'} En ${tiempoTexto} → T${info.turno_proximo}
+        </div>
+        ${salen.length > 0 ? `
+          <div class="plan-vivo-grupo">
+            <span class="plan-vivo-grupo-label">Sale:</span>
+            ${salen.map(c => `<span class="plan-vivo-jugadora plan-vivo-sale">${c.nombre} ${c.apellido[0]}.</span>`).join('')}
+          </div>
+        ` : ''}
+        ${entran.length > 0 ? `
+          <div class="plan-vivo-grupo">
+            <span class="plan-vivo-grupo-label">Entra:</span>
+            ${entran.map(c => `<span class="plan-vivo-jugadora plan-vivo-entra">${c.nombre} ${c.apellido[0]}.</span>`).join('')}
+          </div>
+        ` : ''}
+      </div>
+    `;
+
+    // Detectar "fuera de plan": jugadoras en cancha vs plan_actual_ids
+    const fueraPlanDiv = document.getElementById('plan-vivo-fuera-plan');
+    const idsEnCancha = data.jugadoras.filter(j => j.en_cancha).map(j => j.id);
+    const idsPlan = info.plan_actual_ids || [];
+
+    const enCanchaSinPlan = idsEnCancha.filter(id => !idsPlan.includes(id));
+    const enPlanSinCancha = idsPlan.filter(id => !idsEnCancha.includes(id));
+
+    if (enCanchaSinPlan.length > 0 || enPlanSinCancha.length > 0) {
+      const dif = enCanchaSinPlan.length + enPlanSinCancha.length;
+      fueraPlanDiv.style.display = 'block';
+      fueraPlanDiv.innerHTML = `
+        ⚠️ La cancha tiene ${dif} diferencia${dif !== 1 ? 's' : ''} respecto al plan de T${info.turno_actual}.
+      `;
+    } else {
+      fueraPlanDiv.style.display = 'none';
+    }
+  }
+
+  // Sonido suave de alarma usando Web Audio API (no requiere archivo externo)
+  function sonarAlarma() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = 880;  // La (suave)
+      gain.gain.setValueAtTime(0, ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.15, ctx.currentTime + 0.05);
+      gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.5);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.5);
+    } catch (err) {
+      // Si no hay AudioContext disponible, no pasa nada
+      console.log('Audio no disponible');
+    }
+  }
+
   // Cargar al inicio
   cargarRotacion();
 
   // Refrescar cada 15 segundos
   setInterval(cargarRotacion, 15000);
 
-  // Refresca el estado del server cada 30s (por si el server tiene info más nueva)
+  // Refresca el estado del server cada 5s mientras corre el cronómetro
+  // (necesario para detectar la alarma 30s antes del cambio).
+  // Si el cronómetro está pausado, va más lento (cada 30s) para no saturar.
   setInterval(() => {
-    fetch(`/partido/${partidoId}/estado`).then(r => r.json()).then(renderEstado);
-  }, 30000);
+    const intervalo = cronometroCorriendo ? 5000 : 30000;
+    const ahoraTs = Date.now();
+    if (!window.__lastEstadoFetch || (ahoraTs - window.__lastEstadoFetch) >= intervalo - 100) {
+      window.__lastEstadoFetch = ahoraTs;
+      fetch(`/partido/${partidoId}/estado`).then(r => r.json()).then(renderEstado);
+    }
+  }, 1000);  // chequeo cada segundo, decide si hace fetch o no
 }
 </script>
 {% endblock %}
