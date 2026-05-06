@@ -254,6 +254,15 @@
     <div id="plan-vivo-fuera-plan" class="plan-vivo-warning" style="display: none;"></div>
   </div>
 
+  <!-- ZONA DE CAMBIOS RÁPIDOS (pares sale/entra clickeables) -->
+  <div id="zona-cambios-rapidos" style="display: none;" class="zona-cambios-card">
+    <div class="zona-cambios-head">
+      <span class="zona-cambios-title" id="zona-cambios-titulo">⚡ Cambios planificados</span>
+      <span class="zona-cambios-meta">Tocá para ejecutar</span>
+    </div>
+    <div id="zona-cambios-lista"></div>
+  </div>
+
   <!-- Jugadoras -->
   <div class="players-section">
     <div class="players-header">
@@ -497,8 +506,10 @@ if (liveApp) {
     const listEl = document.getElementById('players-list');
     listEl.innerHTML = lista.map(j => {
       const segs = j.segundos_jugados;
+      const enZona = idsEnZonaCambios.has(j.id);
+      const claseExtra = enZona ? 'player-item-en-zona' : '';
       return `
-        <div class="player-item" data-jugadora-id="${j.id}" data-en-cancha="${j.en_cancha}"
+        <div class="player-item ${claseExtra}" data-jugadora-id="${j.id}" data-en-cancha="${j.en_cancha}"
              data-basesegundos="${segs}" data-basetimestamp="${Date.now()}">
           <div class="convocada-avatar avatar-sm">${j.iniciales}</div>
           <div class="player-name-block">
@@ -785,6 +796,167 @@ if (liveApp) {
   // ============================================================
   let alarmaSonada = false;       // para evitar repetir el sonido
   let ultimoTurnoAlarma = null;   // para resetear cuando cambia el turno
+  let idsEnZonaCambios = new Set(); // jugadoras destacadas en la zona arriba
+
+  // Empareja "salidas" con "entradas" del próximo turno.
+  // Devuelve [{sale, entra}, ...] preferentemente emparejando por posición.
+  function emparejarCambios(cambios) {
+    const salen = cambios.filter(c => c.tipo === 'sale');
+    const entran = cambios.filter(c => c.tipo === 'entra');
+    const usadas = new Set();
+    const pares = [];
+
+    // Primero: emparejar por misma posición
+    for (const s of salen) {
+      const match = entran.find(e =>
+        !usadas.has(e.jugadora_id) && e.posicion === s.posicion
+      );
+      if (match) {
+        pares.push({ sale: s, entra: match });
+        usadas.add(match.jugadora_id);
+      }
+    }
+    // Después: emparejar las que sobraron en el orden que vengan
+    for (const s of salen) {
+      if (pares.find(p => p.sale.jugadora_id === s.jugadora_id)) continue;
+      const match = entran.find(e => !usadas.has(e.jugadora_id));
+      if (match) {
+        pares.push({ sale: s, entra: match });
+        usadas.add(match.jugadora_id);
+      } else {
+        // No hay entrada para esta salida (caso raro)
+        pares.push({ sale: s, entra: null });
+      }
+    }
+    // Por las dudas, entradas sueltas sin salida
+    for (const e of entran) {
+      if (usadas.has(e.jugadora_id)) continue;
+      pares.push({ sale: null, entra: e });
+    }
+    return pares;
+  }
+
+  function colorPosicion(pos) {
+    const map = {
+      'Arquera':   '#185FA5',
+      'Defensora': '#534AB7',
+      'Volante':   '#0F6E56',
+      'Delantera': '#993C1D',
+    };
+    return map[pos] || '#888';
+  }
+
+  function renderZonaCambios(info) {
+    const zona = document.getElementById('zona-cambios-rapidos');
+    const lista = document.getElementById('zona-cambios-lista');
+    const titulo = document.getElementById('zona-cambios-titulo');
+
+    // Solo mostrar si hay próximo turno EN ESTE cuarto y hay cambios
+    if (!info || !info.tiene_plan || !info.turno_proximo || !info.proximo_en_mismo_cuarto) {
+      zona.style.display = 'none';
+      idsEnZonaCambios.clear();
+      return;
+    }
+    if (!info.cambios_proximos || info.cambios_proximos.length === 0) {
+      zona.style.display = 'none';
+      idsEnZonaCambios.clear();
+      return;
+    }
+
+    zona.style.display = 'block';
+
+    // Poblar el set de IDs destacados (para atenuar en la lista)
+    idsEnZonaCambios = new Set(info.cambios_proximos.map(c => c.jugadora_id));
+
+    // Título: T2 + tiempo restante si lo tenemos
+    let textoTiempo = '';
+    if (info.segundos_hasta_cambio !== null && info.segundos_hasta_cambio !== undefined) {
+      const m = Math.floor(info.segundos_hasta_cambio / 60);
+      const s = info.segundos_hasta_cambio % 60;
+      textoTiempo = m > 0 ? ` (en ${m}m ${String(s).padStart(2,'0')}s)` : ` (en ${s}s)`;
+    }
+
+    const enAlarma = info.segundos_hasta_cambio !== null && info.segundos_hasta_cambio <= 30 && info.segundos_hasta_cambio > 0;
+    const icono = enAlarma ? '🔔' : '⚡';
+    titulo.innerHTML = `${icono} Cambios para T${info.turno_proximo}${textoTiempo}`;
+
+    // Pulsar el borde si está en alarma
+    if (enAlarma) zona.classList.add('zona-cambios-alarma');
+    else zona.classList.remove('zona-cambios-alarma');
+
+    // Emparejar
+    const pares = emparejarCambios(info.cambios_proximos);
+
+    let html = '';
+    for (const par of pares) {
+      let cardSale = '<div class="swap-card-empty">—</div>';
+      let cardEntra = '<div class="swap-card-empty">—</div>';
+
+      if (par.sale) {
+        const colSale = colorPosicion(par.sale.posicion);
+        cardSale = `
+          <div class="swap-card swap-card-sale" data-id="${par.sale.jugadora_id}" data-accion="sacar">
+            <div class="swap-ini" style="background: ${colSale};">${par.sale.iniciales}</div>
+            <div class="swap-name-block">
+              <div class="swap-name">${par.sale.nombre} ${par.sale.apellido[0]}.</div>
+              <div class="swap-pos">${par.sale.posicion}</div>
+            </div>
+            <span class="swap-badge swap-badge-sale">Sale</span>
+          </div>
+        `;
+      }
+      if (par.entra) {
+        const colEntra = colorPosicion(par.entra.posicion);
+        cardEntra = `
+          <div class="swap-card swap-card-entra" data-id="${par.entra.jugadora_id}" data-accion="meter">
+            <div class="swap-ini" style="background: ${colEntra};">${par.entra.iniciales}</div>
+            <div class="swap-name-block">
+              <div class="swap-name">${par.entra.nombre} ${par.entra.apellido[0]}.</div>
+              <div class="swap-pos">${par.entra.posicion}</div>
+            </div>
+            <span class="swap-badge swap-badge-entra">Entra</span>
+          </div>
+        `;
+      }
+
+      html += `
+        <div class="swap-row">
+          ${cardSale}
+          <div class="swap-arrow">⇄</div>
+          ${cardEntra}
+        </div>
+      `;
+    }
+    lista.innerHTML = html;
+
+    // Listeners: tap en card → ejecutar ingreso/egreso
+    lista.querySelectorAll('.swap-card').forEach(c => {
+      c.addEventListener('click', async () => {
+        const jugId = parseInt(c.dataset.id);
+        const accion = c.dataset.accion;  // 'sacar' o 'meter'
+        await ejecutarToggleCancha(jugId, accion);
+      });
+    });
+  }
+
+  async function ejecutarToggleCancha(jugadoraId, accion) {
+    // accion es 'sacar' o 'meter' desde la UI; el endpoint usa 'salir' o 'entrar'
+    const accionEndpoint = accion === 'sacar' ? 'salir' : 'entrar';
+    try {
+      const r = await fetch(`/partido/${partidoId}/jugadora/${jugadoraId}/${accionEndpoint}`, {
+        method: 'POST'
+      });
+      if (!r.ok) {
+        alert('Error al hacer el cambio');
+        return;
+      }
+      // Refrescar inmediatamente para ver el cambio
+      const data = await r.json();
+      renderEstado(data);
+    } catch (err) {
+      alert('Error de conexión: ' + err.message);
+    }
+  }
 
   function actualizarPlanEnVivo(data) {
     const card = document.getElementById('plan-vivo-card');
@@ -792,6 +964,7 @@ if (liveApp) {
 
     if (!info || !info.tiene_plan) {
       card.style.display = 'none';
+      document.getElementById('zona-cambios-rapidos').style.display = 'none';
       return;
     }
 
@@ -809,11 +982,13 @@ if (liveApp) {
       alarmaSonada = false;
     }
 
-    // Cambios próximos
+    // Renderizar zona de cambios rápidos (separado del cartel info)
+    renderZonaCambios(info);
+
+    // Cambios próximos en el cartel informativo
     const contCambios = document.getElementById('plan-vivo-cambios');
 
     if (!info.turno_proximo || !info.proximo_en_mismo_cuarto) {
-      // No hay próximo en este cuarto (estamos en último turno o cerca de descanso)
       if (info.turno_proximo && !info.proximo_en_mismo_cuarto) {
         contCambios.innerHTML = `
           <div class="plan-vivo-info-msg">
@@ -839,15 +1014,18 @@ if (liveApp) {
       return;
     }
 
-    // Hay cambios planificados
+    // Hay cambios planificados - tiempo info
     const segs = info.segundos_hasta_cambio;
+    if (segs === null || segs === undefined) {
+      contCambios.innerHTML = '';
+      return;
+    }
     const minutos = Math.floor(segs / 60);
     const segundos = segs % 60;
     const tiempoTexto = minutos > 0
       ? `${minutos}m ${String(segundos).padStart(2, '0')}s`
       : `${segundos}s`;
 
-    // ¿Disparar alarma?
     const enAlarma = segs !== null && segs <= 30 && segs > 0 && data.cronometro_corriendo;
 
     if (enAlarma && !alarmaSonada) {
@@ -855,32 +1033,13 @@ if (liveApp) {
       alarmaSonada = true;
     }
 
-    // Renderizar
-    const claseAlarma = enAlarma ? 'plan-vivo-alarma' : '';
-    const salen = info.cambios_proximos.filter(c => c.tipo === 'sale');
-    const entran = info.cambios_proximos.filter(c => c.tipo === 'entra');
-
     contCambios.innerHTML = `
-      <div class="plan-vivo-cambio-row ${claseAlarma}">
-        <div class="plan-vivo-cambio-tiempo">
-          ${enAlarma ? '🔔' : '⏱'} En ${tiempoTexto} → T${info.turno_proximo}
-        </div>
-        ${salen.length > 0 ? `
-          <div class="plan-vivo-grupo">
-            <span class="plan-vivo-grupo-label">Sale:</span>
-            ${salen.map(c => `<span class="plan-vivo-jugadora plan-vivo-sale">${c.nombre} ${c.apellido[0]}.</span>`).join('')}
-          </div>
-        ` : ''}
-        ${entran.length > 0 ? `
-          <div class="plan-vivo-grupo">
-            <span class="plan-vivo-grupo-label">Entra:</span>
-            ${entran.map(c => `<span class="plan-vivo-jugadora plan-vivo-entra">${c.nombre} ${c.apellido[0]}.</span>`).join('')}
-          </div>
-        ` : ''}
+      <div class="plan-vivo-info-msg">
+        ${enAlarma ? '🔔' : '⏱'} Próximo cambio en ${tiempoTexto} → T${info.turno_proximo}
       </div>
     `;
 
-    // Detectar "fuera de plan": jugadoras en cancha vs plan_actual_ids
+    // Detectar "fuera de plan"
     const fueraPlanDiv = document.getElementById('plan-vivo-fuera-plan');
     const idsEnCancha = data.jugadoras.filter(j => j.en_cancha).map(j => j.id);
     const idsPlan = info.plan_actual_ids || [];
