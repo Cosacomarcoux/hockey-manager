@@ -944,6 +944,9 @@ def _serializar_estado(partido):
     # Compatibilidad: dejar también el dict simple "stats" (totales)
     stats_totales = {tipo: stats_por_cuarto[tipo]['total'] for tipo in tipos_stats}
 
+    # === INFO DEL PLAN PARA LA VISTA EN VIVO ===
+    plan_info = _calcular_info_plan_en_vivo(partido)
+
     return {
         'estado': partido.estado,
         'cuarto_actual': partido.cuarto_actual,
@@ -974,7 +977,134 @@ def _serializar_estado(partido):
             'segundo': e.segundo,
             'descripcion': e.descripcion,
             'tiempo_str': e.tiempo_str
-        } for e in partido.eventos]
+        } for e in partido.eventos],
+        'plan_en_vivo': plan_info,
+    }
+
+
+def _calcular_info_plan_en_vivo(partido):
+    """
+    Calcula la info del plan según el cuarto y cronómetro actuales del partido.
+
+    Convención: el plan completo cubre los 60 min del partido en N turnos.
+    Esos N turnos se distribuyen por cuartos. Si N=12 y duración=5min:
+    - Q1 → T1, T2, T3 (cada turno = 5 min del cuarto)
+    - Q2 → T4, T5, T6
+    - Q3 → T7, T8, T9
+    - Q4 → T10, T11, T12
+
+    Si no hay plan o el partido no está en curso, devuelve null.
+    """
+    if partido.estado != 'en_curso' or partido.cuarto_actual not in [1, 2, 3, 4]:
+        return None
+
+    plan = PlanificacionPartido.query.filter_by(partido_id=partido.id).first()
+    if not plan:
+        return None
+
+    n_turnos_total = plan.cantidad_turnos  # ej. 12
+    duracion_turno = plan.duracion_turno_min
+
+    # Cuántos turnos por cuarto (asumimos distribución uniforme)
+    if n_turnos_total % 4 != 0:
+        # Si no es divisible por 4, simplemente no lo distribuimos por cuartos
+        # (caso raro: 10, 11, 13, etc. turnos)
+        turnos_por_cuarto = n_turnos_total / 4
+    else:
+        turnos_por_cuarto = n_turnos_total // 4
+
+    # Cuarto actual y minuto dentro del cuarto
+    cuarto = partido.cuarto_actual
+    crono_seg_total = partido.cronometro_actual
+    minuto_en_cuarto = crono_seg_total / 60.0
+    seg_en_cuarto = crono_seg_total
+
+    # Calcular turno actual:
+    # Cada cuarto dura 15 min y tiene `turnos_por_cuarto` turnos.
+    # Cada turno dentro del cuarto dura 15/turnos_por_cuarto minutos
+    if turnos_por_cuarto <= 0:
+        return None
+
+    duracion_turno_en_cuarto = 15.0 / turnos_por_cuarto  # minutos por turno dentro del cuarto
+
+    # Turno relativo dentro del cuarto (0-indexed)
+    turno_idx_en_cuarto = int(minuto_en_cuarto / duracion_turno_en_cuarto)
+    if turno_idx_en_cuarto >= turnos_por_cuarto:
+        turno_idx_en_cuarto = int(turnos_por_cuarto) - 1
+
+    # Turno absoluto (1-indexed)
+    turno_actual_n = int((cuarto - 1) * turnos_por_cuarto + turno_idx_en_cuarto + 1)
+    turno_actual_n = max(1, min(turno_actual_n, n_turnos_total))
+
+    # Calcular cuándo termina el turno actual (en segundos del cuarto actual)
+    # y si el próximo turno cae en este cuarto o es del próximo
+    fin_turno_actual_seg_en_cuarto = (turno_idx_en_cuarto + 1) * duracion_turno_en_cuarto * 60
+
+    # ¿El próximo turno está en este cuarto?
+    proximo_en_mismo_cuarto = (turno_idx_en_cuarto + 1) < turnos_por_cuarto
+    turno_proximo_n = turno_actual_n + 1 if turno_actual_n < n_turnos_total else None
+
+    # Segundos hasta el próximo cambio (solo si está en mismo cuarto)
+    segundos_hasta_cambio = None
+    if proximo_en_mismo_cuarto and turno_proximo_n:
+        segundos_hasta_cambio = max(0, int(fin_turno_actual_seg_en_cuarto - seg_en_cuarto))
+
+    # Calcular los cambios entre turno actual y próximo
+    cambios = []
+    if turno_proximo_n and proximo_en_mismo_cuarto:
+        ids_actual = {a.jugadora_id for a in
+                      AsignacionTurno.query.filter_by(plan_id=plan.id, turno_numero=turno_actual_n).all()}
+        ids_proximo = {a.jugadora_id for a in
+                       AsignacionTurno.query.filter_by(plan_id=plan.id, turno_numero=turno_proximo_n).all()}
+
+        ids_salen = ids_actual - ids_proximo
+        ids_entran = ids_proximo - ids_actual
+
+        # Mapear IDs a info de jugadora
+        if ids_salen or ids_entran:
+            jugs_relevantes = Jugadora.query.filter(
+                Jugadora.id.in_(ids_salen | ids_entran)
+            ).all()
+            jugs_dict = {j.id: j for j in jugs_relevantes}
+
+            for jid in ids_salen:
+                if jid in jugs_dict:
+                    j = jugs_dict[jid]
+                    cambios.append({
+                        'tipo': 'sale',
+                        'jugadora_id': jid,
+                        'nombre': j.nombre,
+                        'apellido': j.apellido,
+                        'iniciales': j.iniciales,
+                        'posicion': j.posicion,
+                    })
+            for jid in ids_entran:
+                if jid in jugs_dict:
+                    j = jugs_dict[jid]
+                    cambios.append({
+                        'tipo': 'entra',
+                        'jugadora_id': jid,
+                        'nombre': j.nombre,
+                        'apellido': j.apellido,
+                        'iniciales': j.iniciales,
+                        'posicion': j.posicion,
+                    })
+
+    # Quiénes deberían estar en cancha AHORA según el plan
+    asign_actual = AsignacionTurno.query.filter_by(plan_id=plan.id, turno_numero=turno_actual_n).all()
+    plan_actual_ids = [a.jugadora_id for a in asign_actual]
+
+    return {
+        'tiene_plan': True,
+        'turno_actual': turno_actual_n,
+        'turno_proximo': turno_proximo_n,
+        'turnos_total': n_turnos_total,
+        'duracion_turno_min': duracion_turno,
+        'cuarto': cuarto,
+        'segundos_hasta_cambio': segundos_hasta_cambio,
+        'proximo_en_mismo_cuarto': proximo_en_mismo_cuarto,
+        'cambios_proximos': cambios,
+        'plan_actual_ids': plan_actual_ids,
     }
 
 
@@ -990,7 +1120,7 @@ def partido_estado(partido_id):
 @app.route('/partido/<int:partido_id>/iniciar', methods=['POST'])
 @login_requerido
 def partido_iniciar(partido_id):
-    """Arranca el partido en el primer cuarto."""
+    """Arranca el partido en el primer cuarto y pone titulares del T1 en cancha."""
     entrenador = entrenador_actual()
     partido = Partido.query.filter_by(id=partido_id, entrenador_id=entrenador.id).first_or_404()
 
@@ -1000,8 +1130,16 @@ def partido_iniciar(partido_id):
         partido.cronometro_segundos = 0
         partido.cronometro_iniciado = None  # Inicia pausado, el entrenador toca "play"
 
+        # Si hay un plan, poner las titulares del T1 en cancha automáticamente
+        plan = PlanificacionPartido.query.filter_by(partido_id=partido.id).first()
+        if plan:
+            asign_t1 = AsignacionTurno.query.filter_by(plan_id=plan.id, turno_numero=1).all()
+            ids_titulares = {a.jugadora_id for a in asign_t1}
+            # Marcar en_cancha=True a las titulares y False a las demás convocadas
+            for c in partido.convocadas:
+                c.en_cancha = c.jugadora_id in ids_titulares
+
     db.session.commit()
-    # Redirigir al detalle (la pantalla en vivo)
     return redirect(url_for('partido_detalle', partido_id=partido_id))
 
 
