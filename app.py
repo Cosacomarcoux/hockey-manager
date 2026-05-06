@@ -1172,6 +1172,41 @@ def partido_cronometro(partido_id, accion):
                     c.segundos_jugados += int(delta_j)
                     c.ultimo_ingreso = None
 
+    elif accion == 'ajustar':
+        # Ajustar el cronómetro sumando o restando segundos
+        # Recibe ?delta=N en query o JSON con {"delta": N}
+        delta = request.args.get('delta', type=int)
+        if delta is None:
+            data = request.get_json(silent=True) or {}
+            delta = int(data.get('delta', 0))
+
+        # Pausar primero si estaba corriendo, ajustar, y volver a poner play si estaba
+        estaba_corriendo = partido.cronometro_iniciado is not None
+        if estaba_corriendo:
+            ahora = datetime.utcnow()
+            delta_t = (ahora - partido.cronometro_iniciado).total_seconds()
+            partido.cronometro_segundos += int(delta_t)
+            partido.cronometro_iniciado = None
+            # Acumular segundos jugados de las que están en cancha
+            for c in partido.convocadas:
+                if c.en_cancha and c.ultimo_ingreso:
+                    delta_j = (ahora - c.ultimo_ingreso).total_seconds()
+                    c.segundos_jugados += int(delta_j)
+                    c.ultimo_ingreso = None
+
+        # Aplicar el delta. El cronómetro de un cuarto va de 0 a 900 segundos (15 min).
+        nuevo_segundos = partido.cronometro_segundos + delta
+        nuevo_segundos = max(0, min(nuevo_segundos, 900))  # clamp [0, 900]
+        partido.cronometro_segundos = nuevo_segundos
+
+        # Volver a poner play si estaba corriendo
+        if estaba_corriendo:
+            ahora = datetime.utcnow()
+            partido.cronometro_iniciado = ahora
+            for c in partido.convocadas:
+                if c.en_cancha:
+                    c.ultimo_ingreso = ahora
+
     elif accion == 'reset':
         # Resetea el cronómetro del cuarto a 0
         if partido.cronometro_iniciado:
