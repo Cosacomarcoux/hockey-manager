@@ -3112,3 +3112,177 @@ input:focus, select:focus {
   color: #6B4D08;
   font-weight: 500;
 }
+
+/* ==========================================================
+   ZONA DE CAMBIOS RÁPIDOS (pares sale/entra clickeables)
+   ========================================================== */
+.zona-cambios-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  border-left: 4px solid #EF9F27;
+}
+
+.zona-cambios-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.zona-cambios-title {
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.zona-cambios-meta {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.swap-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+}
+
+.swap-card {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.swap-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+}
+.swap-card:active { transform: scale(0.98); }
+
+.swap-card-sale {
+  background: #FCEBEB;
+  border-color: #F09595;
+}
+.swap-card-sale:hover {
+  background: #F7C1C1;
+}
+
+.swap-card-entra {
+  background: #EAF3DE;
+  border-color: #97C459;
+}
+.swap-card-entra:hover {
+  background: #C0DD97;
+}
+
+.swap-card-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  color: var(--color-text-muted);
+  background: var(--color-bg);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+}
+
+.swap-arrow {
+  font-size: 14px;
+  color: var(--color-text-muted);
+  width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+  font-weight: 600;
+}
+
+.swap-ini {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: white;
+  flex-shrink: 0;
+}
+
+.swap-name-block {
+  flex: 1;
+  min-width: 0;
+}
+
+.swap-name {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text);
+}
+
+.swap-pos {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  margin-top: 1px;
+}
+
+.swap-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 700;
+  flex-shrink: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.swap-badge-sale {
+  background: #F09595;
+  color: #501313;
+}
+
+.swap-badge-entra {
+  background: #97C459;
+  color: #173404;
+}
+
+/* Alarma: pulsa el borde cuando faltan <30s */
+.zona-cambios-alarma {
+  animation: zona-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes zona-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 159, 39, 0.5); }
+  50%      { box-shadow: 0 0 0 8px rgba(239, 159, 39, 0); }
+}
+
+/* Atenuar jugadoras de la lista que ya están en la zona de cambios */
+.player-item-en-zona {
+  opacity: 0.4;
+}
+
+/* En mobile, achicar las cards de swap */
+@media (max-width: 480px) {
+  .swap-card { padding: 6px 8px; gap: 6px; }
+  .swap-name { font-size: 12px; }
+  .swap-pos { font-size: 10px; }
+  .swap-ini { width: 26px; height: 26px; font-size: 10px; }
+  .swap-badge { font-size: 9px; padding: 2px 4px; }
+}
