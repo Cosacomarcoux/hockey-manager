@@ -99,6 +99,12 @@
         <button class="clock-btn-play" id="btn-play-pause">▶</button>
         <button class="clock-btn" id="btn-cuarto-next">▶</button>
       </div>
+      <div class="clock-ajuste">
+        <button class="clock-ajuste-btn" data-delta="-60">−1m</button>
+        <button class="clock-ajuste-btn" data-delta="-10">−10s</button>
+        <button class="clock-ajuste-btn" data-delta="10">+10s</button>
+        <button class="clock-ajuste-btn" data-delta="60">+1m</button>
+      </div>
       <div class="clock-actions">
         <button class="link-edit" id="btn-reset">Reiniciar cuarto</button>
       </div>
@@ -241,26 +247,16 @@
     </div>
   </div>
 
-  <!-- CARTEL DEL PLAN EN VIVO (turno actual + alarma de cambio) -->
-  <div id="plan-vivo-card" style="display: none;" class="plan-vivo-card">
-    <div class="plan-vivo-header">
-      <div class="plan-vivo-turno">
-        <span class="plan-vivo-label">Turno</span>
-        <span class="plan-vivo-num" id="plan-vivo-tnum">T1</span>
-      </div>
-      <a href="#" id="plan-vivo-link" class="plan-vivo-link">Ver plan completo</a>
-    </div>
-    <div id="plan-vivo-cambios" class="plan-vivo-cambios"></div>
-    <div id="plan-vivo-fuera-plan" class="plan-vivo-warning" style="display: none;"></div>
-  </div>
-
   <!-- ZONA DE CAMBIOS RÁPIDOS (pares sale/entra clickeables) -->
   <div id="zona-cambios-rapidos" style="display: none;" class="zona-cambios-card">
     <div class="zona-cambios-head">
       <span class="zona-cambios-title" id="zona-cambios-titulo">⚡ Cambios planificados</span>
-      <span class="zona-cambios-meta">Tocá para ejecutar</span>
+      <button type="button" id="btn-cambios-hechos" class="btn btn-success btn-sm" style="display: none;">
+        ✓ Listo, los hice
+      </button>
     </div>
     <div id="zona-cambios-lista"></div>
+    <div id="plan-vivo-fuera-plan" class="plan-vivo-warning" style="display: none;"></div>
   </div>
 
   <!-- Jugadoras -->
@@ -588,6 +584,15 @@ if (liveApp) {
         .then(r => r.json()).then(renderEstado);
     });
 
+    // Ajuste manual del cronómetro (±10s, ±1min)
+    document.querySelectorAll('.clock-ajuste-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const delta = parseInt(btn.dataset.delta);
+        await fetch(`/partido/${partidoId}/cronometro/ajustar?delta=${delta}`, { method: 'POST' })
+          .then(r => r.json()).then(renderEstado);
+      });
+    });
+
     // Cambio de cuarto
     document.getElementById('btn-cuarto-next').addEventListener('click', async () => {
       await fetch(`/partido/${partidoId}/cuarto/siguiente`, { method: 'POST' })
@@ -792,11 +797,19 @@ if (liveApp) {
   }
 
   // ============================================================
-  // PLAN EN VIVO: cartel + alarma 30s antes del cambio
+  // PLAN EN VIVO: zona de cambios
   // ============================================================
   let alarmaSonada = false;       // para evitar repetir el sonido
   let ultimoTurnoAlarma = null;   // para resetear cuando cambia el turno
   let idsEnZonaCambios = new Set(); // jugadoras destacadas en la zona arriba
+
+  // "Modo congelado": cuando estamos viendo los cambios de T_proximo y vos
+  // todavía no marcaste "ya hice los cambios". Mientras esté congelado, la card
+  // NO se actualiza al pasar de T1 a T2 (sigue mostrando los cambios planificados
+  // hasta que toques el botón "Listo, los hice").
+  let turnoCongelado = null;          // el turno cuyos cambios estamos mostrando
+  let cambiosCongelados = null;       // los cambios que estamos mostrando (snapshot)
+  let infoCongelada = null;           // el info completo del momento
 
   // Empareja "salidas" con "entradas" del próximo turno.
   // Devuelve [{sale, entra}, ...] preferentemente emparejando por posición.
@@ -806,7 +819,6 @@ if (liveApp) {
     const usadas = new Set();
     const pares = [];
 
-    // Primero: emparejar por misma posición
     for (const s of salen) {
       const match = entran.find(e =>
         !usadas.has(e.jugadora_id) && e.posicion === s.posicion
@@ -816,7 +828,6 @@ if (liveApp) {
         usadas.add(match.jugadora_id);
       }
     }
-    // Después: emparejar las que sobraron en el orden que vengan
     for (const s of salen) {
       if (pares.find(p => p.sale.jugadora_id === s.jugadora_id)) continue;
       const match = entran.find(e => !usadas.has(e.jugadora_id));
@@ -824,11 +835,9 @@ if (liveApp) {
         pares.push({ sale: s, entra: match });
         usadas.add(match.jugadora_id);
       } else {
-        // No hay entrada para esta salida (caso raro)
         pares.push({ sale: s, entra: null });
       }
     }
-    // Por las dudas, entradas sueltas sin salida
     for (const e of entran) {
       if (usadas.has(e.jugadora_id)) continue;
       pares.push({ sale: null, entra: e });
@@ -846,46 +855,75 @@ if (liveApp) {
     return map[pos] || '#888';
   }
 
-  function renderZonaCambios(info) {
+  function renderZonaCambios(info, cronometroCorriendoArg) {
     const zona = document.getElementById('zona-cambios-rapidos');
     const lista = document.getElementById('zona-cambios-lista');
     const titulo = document.getElementById('zona-cambios-titulo');
+    const btnHechos = document.getElementById('btn-cambios-hechos');
+
+    // Si estamos en modo congelado, usar la info guardada
+    let infoEffective = infoCongelada || info;
 
     // Solo mostrar si hay próximo turno EN ESTE cuarto y hay cambios
-    if (!info || !info.tiene_plan || !info.turno_proximo || !info.proximo_en_mismo_cuarto) {
+    if (!infoEffective || !infoEffective.tiene_plan || !infoEffective.turno_proximo || !infoEffective.proximo_en_mismo_cuarto) {
       zona.style.display = 'none';
       idsEnZonaCambios.clear();
+      // Si quedó algo congelado pero ya pasó al cuarto siguiente, descongelar
+      if (infoCongelada) descongelar();
       return;
     }
-    if (!info.cambios_proximos || info.cambios_proximos.length === 0) {
+    if (!infoEffective.cambios_proximos || infoEffective.cambios_proximos.length === 0) {
       zona.style.display = 'none';
       idsEnZonaCambios.clear();
+      if (infoCongelada) descongelar();
       return;
+    }
+
+    // === Lógica de congelar ===
+    // Si NO hay nada congelado y estamos viendo info del server,
+    // congelamos cuando el sistema avanza al turno siguiente (turno_actual cambió respecto del T-1
+    // que estábamos viendo) — es decir, si vos estabas viendo "Cambios para T2" cuando el reloj
+    // estaba en T1, y ahora el reloj pasó a T2, congelamos para que sigas viendo los cambios.
+    if (!infoCongelada && info && info.tiene_plan) {
+      // Si estábamos en T_n y mostrando cambios para T_(n+1),
+      // y ahora estamos en T_(n+1), congelar para mantener visible la card
+      if (turnoCongelado === null && info.turno_actual >= 2 && info.turno_proximo) {
+        // Caso normal: la primera vez que entramos en T2, capturamos los cambios actuales
+        // pero como tenemos info más vieja, no podemos. Así que la lógica es más simple:
+        // SI los cambios_proximos están "vacíos" después de haber tenido cambios,
+        // probablemente fue porque pasó al siguiente. Pero estamos sobre-pensando.
+        // Dejémoslo simple: solo congelar cuando el USER toca un botón sin haber marcado "Listo".
+      }
     }
 
     zona.style.display = 'block';
 
-    // Poblar el set de IDs destacados (para atenuar en la lista)
-    idsEnZonaCambios = new Set(info.cambios_proximos.map(c => c.jugadora_id));
+    // Poblar el set de IDs destacados
+    idsEnZonaCambios = new Set(infoEffective.cambios_proximos.map(c => c.jugadora_id));
 
-    // Título: T2 + tiempo restante si lo tenemos
+    // Título
     let textoTiempo = '';
-    if (info.segundos_hasta_cambio !== null && info.segundos_hasta_cambio !== undefined) {
-      const m = Math.floor(info.segundos_hasta_cambio / 60);
-      const s = info.segundos_hasta_cambio % 60;
+    if (!infoCongelada && infoEffective.segundos_hasta_cambio !== null && infoEffective.segundos_hasta_cambio !== undefined) {
+      const m = Math.floor(infoEffective.segundos_hasta_cambio / 60);
+      const s = infoEffective.segundos_hasta_cambio % 60;
       textoTiempo = m > 0 ? ` (en ${m}m ${String(s).padStart(2,'0')}s)` : ` (en ${s}s)`;
+    } else if (infoCongelada) {
+      textoTiempo = ' (turno actual)';
     }
 
-    const enAlarma = info.segundos_hasta_cambio !== null && info.segundos_hasta_cambio <= 30 && info.segundos_hasta_cambio > 0;
-    const icono = enAlarma ? '🔔' : '⚡';
-    titulo.innerHTML = `${icono} Cambios para T${info.turno_proximo}${textoTiempo}`;
+    const enAlarma = !infoCongelada && infoEffective.segundos_hasta_cambio !== null
+        && infoEffective.segundos_hasta_cambio <= 30 && infoEffective.segundos_hasta_cambio > 0;
+    const icono = infoCongelada ? '🔔' : (enAlarma ? '🔔' : '⚡');
+    titulo.innerHTML = `${icono} Cambios para T${infoEffective.turno_proximo}${textoTiempo}`;
 
-    // Pulsar el borde si está en alarma
-    if (enAlarma) zona.classList.add('zona-cambios-alarma');
+    if (enAlarma || infoCongelada) zona.classList.add('zona-cambios-alarma');
     else zona.classList.remove('zona-cambios-alarma');
 
-    // Emparejar
-    const pares = emparejarCambios(info.cambios_proximos);
+    // Mostrar el botón "Listo, los hice" si estamos congelados
+    btnHechos.style.display = infoCongelada ? 'inline-block' : 'none';
+
+    // Pares
+    const pares = emparejarCambios(infoEffective.cambios_proximos);
 
     let html = '';
     for (const par of pares) {
@@ -895,7 +933,7 @@ if (liveApp) {
       if (par.sale) {
         const colSale = colorPosicion(par.sale.posicion);
         cardSale = `
-          <div class="swap-card swap-card-sale" data-id="${par.sale.jugadora_id}" data-accion="sacar">
+          <div class="swap-card swap-card-sale">
             <div class="swap-ini" style="background: ${colSale};">${par.sale.iniciales}</div>
             <div class="swap-name-block">
               <div class="swap-name">${par.sale.nombre} ${par.sale.apellido[0]}.</div>
@@ -907,14 +945,17 @@ if (liveApp) {
       }
       if (par.entra) {
         const colEntra = colorPosicion(par.entra.posicion);
+        const saleId = par.sale ? par.sale.jugadora_id : '';
         cardEntra = `
-          <div class="swap-card swap-card-entra" data-id="${par.entra.jugadora_id}" data-accion="meter">
+          <div class="swap-card swap-card-entra swap-card-clickable"
+               data-entra-id="${par.entra.jugadora_id}"
+               data-sale-id="${saleId}">
             <div class="swap-ini" style="background: ${colEntra};">${par.entra.iniciales}</div>
             <div class="swap-name-block">
               <div class="swap-name">${par.entra.nombre} ${par.entra.apellido[0]}.</div>
               <div class="swap-pos">${par.entra.posicion}</div>
             </div>
-            <span class="swap-badge swap-badge-entra">Entra</span>
+            <span class="swap-badge swap-badge-entra">Tocar para hacer cambio</span>
           </div>
         `;
       }
@@ -929,29 +970,45 @@ if (liveApp) {
     }
     lista.innerHTML = html;
 
-    // Listeners: tap en card → ejecutar ingreso/egreso
-    lista.querySelectorAll('.swap-card').forEach(c => {
+    // Listener: tap en card "Entra" → hace cambio doble (sale la del par + entra esta)
+    lista.querySelectorAll('.swap-card-clickable').forEach(c => {
       c.addEventListener('click', async () => {
-        const jugId = parseInt(c.dataset.id);
-        const accion = c.dataset.accion;  // 'sacar' o 'meter'
-        await ejecutarToggleCancha(jugId, accion);
+        const entraId = parseInt(c.dataset.entraId);
+        const saleId = c.dataset.saleId ? parseInt(c.dataset.saleId) : null;
+        await ejecutarCambioCompleto(saleId, entraId);
       });
     });
   }
 
-  async function ejecutarToggleCancha(jugadoraId, accion) {
-    // accion es 'sacar' o 'meter' desde la UI; el endpoint usa 'salir' o 'entrar'
-    const accionEndpoint = accion === 'sacar' ? 'salir' : 'entrar';
+  function descongelar() {
+    turnoCongelado = null;
+    cambiosCongelados = null;
+    infoCongelada = null;
+  }
+
+  // Ejecuta sale + entra en una sola acción (toca un solo botón)
+  async function ejecutarCambioCompleto(saleId, entraId) {
     try {
-      const r = await fetch(`/partido/${partidoId}/jugadora/${jugadoraId}/${accionEndpoint}`, {
+      // Primero sacar (si hay quien sacar)
+      if (saleId) {
+        const r1 = await fetch(`/partido/${partidoId}/jugadora/${saleId}/salir`, {
+          method: 'POST'
+        });
+        if (!r1.ok) {
+          alert('Error al sacar la jugadora');
+          return;
+        }
+      }
+      // Después meter
+      const r2 = await fetch(`/partido/${partidoId}/jugadora/${entraId}/entrar`, {
         method: 'POST'
       });
-      if (!r.ok) {
-        alert('Error al hacer el cambio');
+      if (!r2.ok) {
+        alert('Error al meter la jugadora');
         return;
       }
-      // Refrescar inmediatamente para ver el cambio
-      const data = await r.json();
+      // Refrescar
+      const data = await r2.json();
       renderEstado(data);
     } catch (err) {
       alert('Error de conexión: ' + err.message);
@@ -959,104 +1016,99 @@ if (liveApp) {
   }
 
   function actualizarPlanEnVivo(data) {
-    const card = document.getElementById('plan-vivo-card');
     const info = data.plan_en_vivo;
 
     if (!info || !info.tiene_plan) {
-      card.style.display = 'none';
       document.getElementById('zona-cambios-rapidos').style.display = 'none';
       return;
     }
 
-    card.style.display = 'block';
-
-    // Link al plan completo
-    document.getElementById('plan-vivo-link').href = `/partido/${partidoId}/planificador`;
-
-    // Turno actual
-    document.getElementById('plan-vivo-tnum').textContent = `T${info.turno_actual}`;
-
-    // Resetear alarma si cambió el turno
+    // Resetear alarma si cambió el turno (server-side)
     if (info.turno_actual !== ultimoTurnoAlarma) {
       ultimoTurnoAlarma = info.turno_actual;
       alarmaSonada = false;
     }
 
-    // Renderizar zona de cambios rápidos (separado del cartel info)
-    renderZonaCambios(info);
+    // === Lógica de congelar la card ===
+    // Si el server avanzó de turno (ej: estábamos en T1, ahora T2) y todavía
+    // hay cambios planificados que no se hicieron → congelar la vista en T_anterior+1
+    if (!infoCongelada) {
+      // Detectar si pasamos de T_n a T_(n+1) y la card mostraba "Cambios para T_(n+1)"
+      // Una forma simple: si en este momento turno_actual coincide con lo que sería
+      // turno_proximo de la situación anterior, y todavía hay cambios pendientes
+      // (jugadoras en cancha que NO están en plan_actual_ids o viceversa)
+      const idsEnCancha = data.jugadoras.filter(j => j.en_cancha).map(j => j.id);
+      const idsPlan = info.plan_actual_ids || [];
+      const enCanchaSinPlan = idsEnCancha.filter(id => !idsPlan.includes(id));
+      const enPlanSinCancha = idsPlan.filter(id => !idsEnCancha.includes(id));
+      const hayDiferencias = enCanchaSinPlan.length > 0 || enPlanSinCancha.length > 0;
 
-    // Cambios próximos en el cartel informativo
-    const contCambios = document.getElementById('plan-vivo-cambios');
-
-    if (!info.turno_proximo || !info.proximo_en_mismo_cuarto) {
-      if (info.turno_proximo && !info.proximo_en_mismo_cuarto) {
-        contCambios.innerHTML = `
-          <div class="plan-vivo-info-msg">
-            ⏸ Próximo cambio (T${info.turno_proximo}) después del descanso del cuarto.
-          </div>
-        `;
-      } else {
-        contCambios.innerHTML = `
-          <div class="plan-vivo-info-msg">
-            🏁 Último turno del partido.
-          </div>
-        `;
+      // Si hay diferencias contra el plan del turno_actual, significa que están atrasados
+      // los cambios que tenían que hacer. Vamos a congelar mostrando esos cambios pendientes.
+      if (hayDiferencias && info.turno_actual >= 2) {
+        // Construimos un info "virtual" que muestra los cambios PENDIENTES
+        // (lo que falta para alinearse con el plan actual)
+        const cambiosPendientes = [];
+        // Las que están en cancha pero no en plan → "salen"
+        for (const id of enCanchaSinPlan) {
+          const j = data.jugadoras.find(jj => jj.id === id);
+          if (j) {
+            cambiosPendientes.push({
+              tipo: 'sale',
+              jugadora_id: j.id,
+              nombre: j.nombre,
+              apellido: j.apellido,
+              iniciales: j.iniciales,
+              posicion: j.posicion,
+            });
+          }
+        }
+        // Las que están en plan pero no en cancha → "entran"
+        for (const id of enPlanSinCancha) {
+          const j = data.jugadoras.find(jj => jj.id === id);
+          if (j) {
+            cambiosPendientes.push({
+              tipo: 'entra',
+              jugadora_id: j.id,
+              nombre: j.nombre,
+              apellido: j.apellido,
+              iniciales: j.iniciales,
+              posicion: j.posicion,
+            });
+          }
+        }
+        infoCongelada = {
+          tiene_plan: true,
+          turno_actual: info.turno_actual - 1,
+          turno_proximo: info.turno_actual,
+          proximo_en_mismo_cuarto: true,
+          cambios_proximos: cambiosPendientes,
+          plan_actual_ids: idsPlan,
+        };
       }
-      return;
     }
 
-    if (info.cambios_proximos.length === 0) {
-      contCambios.innerHTML = `
-        <div class="plan-vivo-info-msg">
-          ✓ Sin cambios planificados al pasar a T${info.turno_proximo}.
-        </div>
-      `;
-      return;
-    }
+    renderZonaCambios(info, data.cronometro_corriendo);
 
-    // Hay cambios planificados - tiempo info
-    const segs = info.segundos_hasta_cambio;
-    if (segs === null || segs === undefined) {
-      contCambios.innerHTML = '';
-      return;
-    }
-    const minutos = Math.floor(segs / 60);
-    const segundos = segs % 60;
-    const tiempoTexto = minutos > 0
-      ? `${minutos}m ${String(segundos).padStart(2, '0')}s`
-      : `${segundos}s`;
-
-    const enAlarma = segs !== null && segs <= 30 && segs > 0 && data.cronometro_corriendo;
-
-    if (enAlarma && !alarmaSonada) {
-      sonarAlarma();
-      alarmaSonada = true;
-    }
-
-    contCambios.innerHTML = `
-      <div class="plan-vivo-info-msg">
-        ${enAlarma ? '🔔' : '⏱'} Próximo cambio en ${tiempoTexto} → T${info.turno_proximo}
-      </div>
-    `;
-
-    // Detectar "fuera de plan"
-    const fueraPlanDiv = document.getElementById('plan-vivo-fuera-plan');
-    const idsEnCancha = data.jugadoras.filter(j => j.en_cancha).map(j => j.id);
-    const idsPlan = info.plan_actual_ids || [];
-
-    const enCanchaSinPlan = idsEnCancha.filter(id => !idsPlan.includes(id));
-    const enPlanSinCancha = idsPlan.filter(id => !idsEnCancha.includes(id));
-
-    if (enCanchaSinPlan.length > 0 || enPlanSinCancha.length > 0) {
-      const dif = enCanchaSinPlan.length + enPlanSinCancha.length;
-      fueraPlanDiv.style.display = 'block';
-      fueraPlanDiv.innerHTML = `
-        ⚠️ La cancha tiene ${dif} diferencia${dif !== 1 ? 's' : ''} respecto al plan de T${info.turno_actual}.
-      `;
-    } else {
-      fueraPlanDiv.style.display = 'none';
+    // Disparar alarma si hace falta
+    if (!infoCongelada) {
+      const segs = info.segundos_hasta_cambio;
+      const enAlarma = segs !== null && segs <= 30 && segs > 0 && data.cronometro_corriendo;
+      if (enAlarma && !alarmaSonada) {
+        sonarAlarma();
+        alarmaSonada = true;
+      }
     }
   }
+
+  // Listener del botón "Listo, los hice"
+  document.addEventListener('click', (e) => {
+    if (e.target && e.target.id === 'btn-cambios-hechos') {
+      descongelar();
+      // Forzar refresh del estado
+      fetch(`/partido/${partidoId}/estado`).then(r => r.json()).then(renderEstado);
+    }
+  });
 
   // Sonido suave de alarma usando Web Audio API (no requiere archivo externo)
   function sonarAlarma() {
