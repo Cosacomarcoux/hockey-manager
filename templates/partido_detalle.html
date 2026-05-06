@@ -250,10 +250,15 @@
   <!-- ZONA DE CAMBIOS RÁPIDOS (pares sale/entra clickeables) -->
   <div id="zona-cambios-rapidos" style="display: none;" class="zona-cambios-card">
     <div class="zona-cambios-head">
-      <span class="zona-cambios-title" id="zona-cambios-titulo">⚡ Cambios planificados</span>
-      <button type="button" id="btn-cambios-hechos" class="btn btn-success btn-sm" style="display: none;">
-        ✓ Listo, los hice
-      </button>
+      <a href="#" id="zona-cambios-link" class="zona-cambios-title-link">
+        <span class="zona-cambios-title" id="zona-cambios-titulo">⚡ Cambios planificados</span>
+      </a>
+      <div class="zona-cambios-actions">
+        <a href="#" id="zona-cambios-ver-plan" class="btn-link-ver-plan">📋 Ver plan</a>
+        <button type="button" id="btn-cambios-hechos" class="btn btn-success btn-sm" style="display: none;">
+          ✓ Listo, los hice
+        </button>
+      </div>
     </div>
     <div id="zona-cambios-lista"></div>
     <div id="plan-vivo-fuera-plan" class="plan-vivo-warning" style="display: none;"></div>
@@ -897,6 +902,11 @@ if (liveApp) {
     }
 
     zona.style.display = 'block';
+
+    // Configurar los links al planificador
+    const urlPlan = `/partido/${partidoId}/planificador`;
+    document.getElementById('zona-cambios-link').href = urlPlan;
+    document.getElementById('zona-cambios-ver-plan').href = urlPlan;
 
     // Poblar el set de IDs destacados
     idsEnZonaCambios = new Set(infoEffective.cambios_proximos.map(c => c.jugadora_id));
