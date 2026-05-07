@@ -420,6 +420,7 @@ if (liveApp) {
   let baseSegundos = 0;
   let baseTimestamp = 0;
   let cronometroCorriendo = false;
+  let idsEnZonaCambios = new Set();  // jugadoras que aparecen en la zona de cambios (atenuar en lista)
 
   function formatoTiempo(segs) {
     const m = Math.floor(segs / 60);
@@ -868,6 +869,7 @@ if (liveApp) {
 
     if (!info || !info.tiene_plan) {
       zona.style.display = 'none';
+      idsEnZonaCambios.clear();
       return;
     }
 
@@ -888,6 +890,7 @@ if (liveApp) {
     // Si no hay cambios planificados → ocultar
     if (!info.cambios_proximos || info.cambios_proximos.length === 0) {
       zona.style.display = 'none';
+      idsEnZonaCambios.clear();
       return;
     }
 
@@ -895,8 +898,12 @@ if (liveApp) {
     // → ocultar (no hay nada que hacer)
     if (info.cancha_alineada && (!info.turno_proximo || !info.proximo_en_mismo_cuarto)) {
       zona.style.display = 'none';
+      idsEnZonaCambios.clear();
       return;
     }
+
+    // Poblar set con los IDs de jugadoras de la zona (para atenuar en la lista de abajo)
+    idsEnZonaCambios = new Set(info.cambios_proximos.map(c => c.jugadora_id));
 
     // El backend ya nos da los cambios PENDIENTES (filtrados según el estado actual de la cancha)
     // Solo los renderizamos directamente.
