@@ -1061,53 +1061,37 @@ def _calcular_info_plan_en_vivo(partido):
     # ===========================================================================
     # LÓGICA DE CAMBIOS A MOSTRAR
     # ===========================================================================
-    # Comparar la cancha actual con dos planes:
-    #   - Plan del turno_actual (¿estoy "alineado con donde debería estar"?)
-    #   - Plan del turno_proximo (¿estoy "ya parecido a donde voy"?)
-    #
-    # Eligiendo el que requiera MENOS cambios pendientes:
-    #   - Si turno_proximo me queda más cerca → estoy haciendo cambios anticipados,
-    #     mostrar los faltantes para llegar a T_proximo.
-    #   - Si turno_actual me queda más cerca → estoy "donde debería" o me atrasé,
-    #     mostrar los pendientes para llegar a T_actual.
+    # Regla simple:
+    # - Por defecto, siempre apuntamos a T_proximo (los cambios planificados que vienen)
+    # - Si la cancha NO coincide con T_actual Y T_actual >= 2 → estás atrasado
+    #   (significa que el reloj ya pasó al siguiente turno y vos no hiciste los cambios).
+    #   En ese caso apuntamos a T_actual para que termines lo que faltaba.
     # ===========================================================================
     cambios = []
-    target_turno = turno_proximo_n  # por defecto
+    target_turno = None
+    target_set = None
 
-    # Plan del próximo turno (si existe y está en mismo cuarto)
-    plan_proximo_set = set()
-    if turno_proximo_n and proximo_en_mismo_cuarto:
+    cancha_alineada_actual = (cancha_actual_set == plan_actual_set)
+
+    # ¿Estás atrasado? Solo si no estás en T1 (T1 es el inicio, todo es nuevo).
+    atrasado = (turno_actual_n >= 2) and (not cancha_alineada_actual)
+
+    if atrasado:
+        # Mostrar lo que falta para alinear con T_actual
+        target_turno = turno_actual_n
+        target_set = plan_actual_set
+    elif turno_proximo_n and proximo_en_mismo_cuarto:
+        # Caso normal: mostrar los cambios planificados para T_proximo
         plan_proximo_set = {a.jugadora_id for a in
                             AsignacionTurno.query.filter_by(plan_id=plan.id, turno_numero=turno_proximo_n).all()}
-
-    # Calcular diferencias contra cada uno
-    diff_actual = (cancha_actual_set ^ plan_actual_set)  # symmetric difference
-    diff_proximo = (cancha_actual_set ^ plan_proximo_set) if plan_proximo_set else None
-
-    # Decidir target
-    if not plan_proximo_set:
-        # No hay próximo o está en otro cuarto → comparar contra actual
-        target_set = plan_actual_set
-        target_turno = turno_actual_n
-    elif cancha_actual_set == plan_actual_set:
-        # Estoy perfectamente alineado con T_actual → mostrar cambios para T_proximo
-        target_set = plan_proximo_set
         target_turno = turno_proximo_n
-    elif cancha_actual_set == plan_proximo_set:
-        # Ya estoy alineado con T_proximo (anticipé todos los cambios) → mostrar siguiente si hay
         target_set = plan_proximo_set
-        target_turno = turno_proximo_n
-    elif len(diff_proximo) < len(diff_actual):
-        # Estoy estrictamente más cerca de T_proximo → ir a T_proximo
-        target_set = plan_proximo_set
-        target_turno = turno_proximo_n
     else:
-        # Estoy más cerca de T_actual o empatado → mostrar pendientes para T_actual
-        target_set = plan_actual_set
+        # No hay próximo en mismo cuarto (último turno o final de cuarto)
         target_turno = turno_actual_n
+        target_set = plan_actual_set
 
-    # Diferentes "alineamientos" para que el frontend decida el comportamiento:
-    cancha_alineada_actual = (cancha_actual_set == plan_actual_set)
+    # cancha_alineada = ¿ya estoy en la formación que muestra la card?
     cancha_alineada_target = (cancha_actual_set == target_set)
 
     # En cancha pero NO en target → SALEN (sobran)
@@ -1138,7 +1122,8 @@ def _calcular_info_plan_en_vivo(partido):
                     'iniciales': j.iniciales, 'posicion': j.posicion,
                 })
 
-    # segundos_hasta_cambio solo cuando estamos mostrando T_proximo y vamos a tiempo
+    # segundos_hasta_cambio solo cuando la cancha está alineada con T_actual
+    # (vamos a tiempo) y el target es T_proximo
     segundos_a_devolver = None
     if target_turno == turno_proximo_n and cancha_alineada_actual:
         segundos_a_devolver = segundos_hasta_cambio
@@ -1155,13 +1140,9 @@ def _calcular_info_plan_en_vivo(partido):
         'proximo_en_mismo_cuarto': proximo_en_mismo_cuarto,
         'cambios_proximos': cambios,
         'plan_actual_ids': list(plan_actual_set),
-        # Si la cancha coincide con T_actual: vas a tiempo
         'cancha_alineada_actual': cancha_alineada_actual,
-        # Si la cancha coincide con el target que estamos mostrando
         'cancha_alineada': cancha_alineada_target,
-        # Si estás "atrasado": estás en un turno (T_actual >= 2) pero la cancha
-        # no coincide ni con T_actual. Significa que dejaste pasar cambios que tenías que hacer.
-        'atrasado': turno_actual_n >= 2 and not cancha_alineada_actual,
+        'atrasado': atrasado,
     }
 
 
