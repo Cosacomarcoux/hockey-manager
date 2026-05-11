@@ -466,6 +466,68 @@ def entrenador_actual():
     return Entrenador.query.get(session['entrenador_id'])
 
 
+def equipo_actual():
+    """
+    Devuelve el equipo activo del entrenador.
+    El ID del equipo activo se guarda en sesión.
+    Si no hay equipo activo en sesión, devuelve el equipo principal del entrenador.
+    Si el entrenador no tiene ningún equipo, devuelve None.
+    """
+    ent = entrenador_actual()
+    if not ent:
+        return None
+
+    # Si hay equipo en sesión, validamos que sea del entrenador actual
+    eq_id = session.get('equipo_id')
+    if eq_id:
+        eq = Equipo.query.filter_by(id=eq_id, entrenador_id=ent.id).first()
+        if eq:
+            return eq
+
+    # Si no, usamos el principal
+    eq = Equipo.query.filter_by(entrenador_id=ent.id, es_principal=True).first()
+    if eq:
+        session['equipo_id'] = eq.id
+        return eq
+
+    # Si no hay principal, usamos el primero
+    eq = Equipo.query.filter_by(entrenador_id=ent.id).order_by(Equipo.id).first()
+    if eq:
+        session['equipo_id'] = eq.id
+        return eq
+
+    return None
+
+
+def cambiar_equipo_activo(equipo_id):
+    """
+    Cambia el equipo activo en la sesión.
+    Valida que el equipo pertenezca al entrenador actual.
+    Devuelve True si cambió, False si no.
+    """
+    ent = entrenador_actual()
+    if not ent:
+        return False
+    eq = Equipo.query.filter_by(id=equipo_id, entrenador_id=ent.id).first()
+    if not eq:
+        return False
+    session['equipo_id'] = eq.id
+    return True
+
+
+@app.context_processor
+def inject_equipo_actual():
+    """Hace disponibles 'eq_actual' y 'todos_los_equipos' en TODOS los templates."""
+    if 'entrenador_id' not in session:
+        return {}
+    eq = equipo_actual()
+    todos = Equipo.query.filter_by(entrenador_id=session['entrenador_id']).order_by(Equipo.creado).all()
+    return {
+        'eq_actual': eq,
+        'todos_los_equipos': todos,
+    }
+
+
 # ============================================================
 # RUTAS DE AUTENTICACIÓN
 # ============================================================
@@ -500,7 +562,17 @@ def registro():
         db.session.add(entrenador)
         db.session.commit()
 
+        # Crear el Equipo Principal automáticamente
+        equipo_principal = Equipo(
+            entrenador_id=entrenador.id,
+            nombre="Equipo Principal",
+            es_principal=True,
+        )
+        db.session.add(equipo_principal)
+        db.session.commit()
+
         session['entrenador_id'] = entrenador.id
+        session['equipo_id'] = equipo_principal.id
         flash(f'¡Bienvenido {nombre}!', 'success')
         return redirect(url_for('plantel'))
 
@@ -516,6 +588,12 @@ def login():
         entrenador = Entrenador.query.filter_by(email=email).first()
         if entrenador and entrenador.check_password(password):
             session['entrenador_id'] = entrenador.id
+            # Setear equipo activo (principal o el primero que tenga)
+            eq = Equipo.query.filter_by(entrenador_id=entrenador.id, es_principal=True).first()
+            if not eq:
+                eq = Equipo.query.filter_by(entrenador_id=entrenador.id).order_by(Equipo.id).first()
+            if eq:
+                session['equipo_id'] = eq.id
             return redirect(url_for('plantel'))
 
         flash('Email o contraseña incorrectos', 'error')
@@ -530,18 +608,136 @@ def logout():
 
 
 # ============================================================
+# ============================================================
+# RUTAS DE EQUIPOS (multi-equipo)
+# ============================================================
+@app.route('/equipos')
+@login_requerido
+def equipos_lista():
+    """Lista de equipos del entrenador con opción de crear/editar/borrar."""
+    entrenador = entrenador_actual()
+    equipos = Equipo.query.filter_by(entrenador_id=entrenador.id).order_by(Equipo.creado).all()
+    eq_activo = equipo_actual()
+
+    # Calcular contadores por equipo (jugadoras, partidos)
+    contadores = {}
+    for eq in equipos:
+        contadores[eq.id] = {
+            'jugadoras': Jugadora.query.filter_by(equipo_id=eq.id).count(),
+            'partidos': Partido.query.filter_by(equipo_id=eq.id).count(),
+        }
+
+    return render_template(
+        'equipos_lista.html',
+        entrenador=entrenador,
+        equipos=equipos,
+        eq_activo=eq_activo,
+        contadores=contadores,
+    )
+
+
+@app.route('/equipo/nuevo', methods=['POST'])
+@login_requerido
+def equipo_nuevo():
+    """Crea un nuevo equipo."""
+    entrenador = entrenador_actual()
+    nombre = (request.form.get('nombre') or '').strip()
+    if not nombre:
+        flash('Tenés que poner un nombre al equipo', 'error')
+        return redirect(url_for('equipos_lista'))
+    if len(nombre) > 80:
+        nombre = nombre[:80]
+
+    nuevo = Equipo(entrenador_id=entrenador.id, nombre=nombre, es_principal=False)
+    db.session.add(nuevo)
+    db.session.commit()
+    flash(f'Equipo "{nombre}" creado', 'success')
+    return redirect(url_for('equipos_lista'))
+
+
+@app.route('/equipo/<int:equipo_id>/editar', methods=['POST'])
+@login_requerido
+def equipo_editar(equipo_id):
+    """Cambia el nombre de un equipo."""
+    entrenador = entrenador_actual()
+    eq = Equipo.query.filter_by(id=equipo_id, entrenador_id=entrenador.id).first_or_404()
+    nombre = (request.form.get('nombre') or '').strip()
+    if not nombre:
+        flash('Tenés que poner un nombre', 'error')
+        return redirect(url_for('equipos_lista'))
+    if len(nombre) > 80:
+        nombre = nombre[:80]
+    eq.nombre = nombre
+    db.session.commit()
+    flash(f'Equipo renombrado a "{nombre}"', 'success')
+    return redirect(url_for('equipos_lista'))
+
+
+@app.route('/equipo/<int:equipo_id>/borrar', methods=['POST'])
+@login_requerido
+def equipo_borrar(equipo_id):
+    """Borra un equipo y todos sus datos asociados."""
+    entrenador = entrenador_actual()
+    eq = Equipo.query.filter_by(id=equipo_id, entrenador_id=entrenador.id).first_or_404()
+
+    # No permitir borrar el último equipo
+    cant_equipos = Equipo.query.filter_by(entrenador_id=entrenador.id).count()
+    if cant_equipos <= 1:
+        flash('No podés borrar tu único equipo. Creá otro primero.', 'error')
+        return redirect(url_for('equipos_lista'))
+
+    nombre = eq.nombre
+
+    # Borrar todos los datos del equipo (jugadoras, partidos, sesiones)
+    # SQLAlchemy se encarga de las cascadas a sus hijos (asistencias, eventos, etc.)
+    Jugadora.query.filter_by(equipo_id=eq.id).delete()
+    Sesion.query.filter_by(equipo_id=eq.id).delete()
+    Partido.query.filter_by(equipo_id=eq.id).delete()
+    db.session.delete(eq)
+    db.session.commit()
+
+    # Si era el equipo activo, cambiar al principal
+    if session.get('equipo_id') == equipo_id:
+        principal = Equipo.query.filter_by(entrenador_id=entrenador.id, es_principal=True).first()
+        if not principal:
+            principal = Equipo.query.filter_by(entrenador_id=entrenador.id).order_by(Equipo.id).first()
+        if principal:
+            session['equipo_id'] = principal.id
+        else:
+            session.pop('equipo_id', None)
+
+    flash(f'Equipo "{nombre}" eliminado', 'success')
+    return redirect(url_for('equipos_lista'))
+
+
+@app.route('/equipo/<int:equipo_id>/activar', methods=['POST'])
+@login_requerido
+def equipo_activar(equipo_id):
+    """Cambia el equipo activo en la sesión."""
+    if cambiar_equipo_activo(equipo_id):
+        eq = Equipo.query.get(equipo_id)
+        flash(f'Cambiaste a "{eq.nombre}"', 'success')
+    else:
+        flash('No se pudo cambiar de equipo', 'error')
+    # Redirigir a donde estaba el usuario o al plantel
+    next_url = request.form.get('next') or url_for('plantel')
+    return redirect(next_url)
+
+
+# ============================================================
 # RUTAS DEL PLANTEL
 # ============================================================
 @app.route('/plantel')
 @login_requerido
 def plantel():
     entrenador = entrenador_actual()
-    jugadoras = Jugadora.query.filter_by(entrenador_id=entrenador.id).order_by(Jugadora.apellido).all()
+    eq_actual = equipo_actual()
+    jugadoras = Jugadora.query.filter_by(equipo_id=eq_actual.id).order_by(Jugadora.apellido).all()
 
     # Stats generales
     stats_jugadoras = [(j, j.stats_asistencia()) for j in jugadoras]
     total_jug = len(jugadoras)
-    total_sesiones = Sesion.query.filter_by(entrenador_id=entrenador.id).count()
+    total_sesiones = Sesion.query.filter_by(equipo_id=eq_actual.id).count()
     pct_promedio = round(
         sum(s['pct'] for _, s in stats_jugadoras) / total_jug
     ) if total_jug > 0 else 0
@@ -569,6 +765,7 @@ def plantel():
 @login_requerido
 def jugadora_nueva():
     entrenador = entrenador_actual()
+    eq_actual = equipo_actual()
     if request.method == 'POST':
         try:
             fecha_nac = request.form.get('fecha_nacimiento') or None
@@ -578,6 +775,7 @@ def jugadora_nueva():
 
             jugadora = Jugadora(
                 entrenador_id=entrenador.id,
+                equipo_id=eq_actual.id if eq_actual else None,
                 nombre=request.form.get('nombre', '').strip(),
                 apellido=request.form.get('apellido', '').strip(),
                 apodo=request.form.get('apodo', '').strip() or None,
@@ -649,6 +847,7 @@ def jugadora_eliminar(jugadora_id):
 @login_requerido
 def asistencia():
     entrenador = entrenador_actual()
+    eq_actual = equipo_actual()
     fecha_str = request.args.get('fecha', date.today().isoformat())
     try:
         fecha_sesion = datetime.strptime(fecha_str, '%Y-%m-%d').date()
@@ -656,11 +855,11 @@ def asistencia():
         fecha_sesion = date.today()
 
     # Buscar o crear sesión virtual (no se guarda hasta que marquen al menos una)
-    sesion = Sesion.query.filter_by(entrenador_id=entrenador.id, fecha=fecha_sesion).first()
+    sesion = Sesion.query.filter_by(equipo_id=eq_actual.id, fecha=fecha_sesion).first() if eq_actual else None
 
     # Solo jugadoras inscriptas hasta esa fecha
     jugadoras_elegibles = Jugadora.query.filter(
-        Jugadora.entrenador_id == entrenador.id,
+        Jugadora.equipo_id == eq_actual.id if eq_actual else False,
         Jugadora.fecha_inscripcion <= fecha_sesion
     ).order_by(Jugadora.apellido).all()
 
@@ -694,6 +893,7 @@ def asistencia():
 def asistencia_marcar():
     """Endpoint AJAX para marcar/desmarcar asistencia de una jugadora."""
     entrenador = entrenador_actual()
+    eq_actual = equipo_actual()
     data = request.get_json()
     fecha_str = data.get('fecha')
     jugadora_id = data.get('jugadora_id')
@@ -703,13 +903,13 @@ def asistencia_marcar():
         return jsonify({'ok': False, 'error': 'Estado inválido'}), 400
 
     fecha_sesion = datetime.strptime(fecha_str, '%Y-%m-%d').date()
-    jugadora = Jugadora.query.filter_by(id=jugadora_id, entrenador_id=entrenador.id).first()
+    jugadora = Jugadora.query.filter_by(id=jugadora_id, equipo_id=eq_actual.id).first() if eq_actual else None
     if not jugadora:
         return jsonify({'ok': False, 'error': 'Jugadora no encontrada'}), 404
 
-    sesion = Sesion.query.filter_by(entrenador_id=entrenador.id, fecha=fecha_sesion).first()
+    sesion = Sesion.query.filter_by(equipo_id=eq_actual.id, fecha=fecha_sesion).first()
     if not sesion:
-        sesion = Sesion(entrenador_id=entrenador.id, fecha=fecha_sesion)
+        sesion = Sesion(entrenador_id=entrenador.id, equipo_id=eq_actual.id if eq_actual else None, fecha=fecha_sesion)
         db.session.add(sesion)
         db.session.flush()
 
@@ -751,12 +951,13 @@ def asistencia_marcar():
 @login_requerido
 def marcar_todas_presentes():
     entrenador = entrenador_actual()
+    eq_actual = equipo_actual()
     fecha_str = request.form.get('fecha')
     fecha_sesion = datetime.strptime(fecha_str, '%Y-%m-%d').date()
 
-    sesion = Sesion.query.filter_by(entrenador_id=entrenador.id, fecha=fecha_sesion).first()
+    sesion = Sesion.query.filter_by(equipo_id=eq_actual.id, fecha=fecha_sesion).first() if eq_actual else None
     if not sesion:
-        sesion = Sesion(entrenador_id=entrenador.id, fecha=fecha_sesion)
+        sesion = Sesion(entrenador_id=entrenador.id, equipo_id=eq_actual.id if eq_actual else None, fecha=fecha_sesion)
         db.session.add(sesion)
         db.session.flush()
 
@@ -781,9 +982,10 @@ def marcar_todas_presentes():
 @login_requerido
 def asistencia_borrar():
     entrenador = entrenador_actual()
+    eq_actual = equipo_actual()
     fecha_str = request.form.get('fecha')
     fecha_sesion = datetime.strptime(fecha_str, '%Y-%m-%d').date()
-    sesion = Sesion.query.filter_by(entrenador_id=entrenador.id, fecha=fecha_sesion).first()
+    sesion = Sesion.query.filter_by(equipo_id=eq_actual.id, fecha=fecha_sesion).first() if eq_actual else None
     if sesion:
         db.session.delete(sesion)
         db.session.commit()
@@ -798,7 +1000,8 @@ def asistencia_borrar():
 @login_requerido
 def historial():
     entrenador = entrenador_actual()
-    sesiones = Sesion.query.filter_by(entrenador_id=entrenador.id).order_by(Sesion.fecha.desc()).all()
+    eq_actual = equipo_actual()
+    sesiones = Sesion.query.filter_by(equipo_id=eq_actual.id).order_by(Sesion.fecha.desc()).all()
 
     datos = []
     for s in sesiones:
@@ -828,7 +1031,8 @@ def historial():
 @login_requerido
 def partidos():
     entrenador = entrenador_actual()
-    lista = Partido.query.filter_by(entrenador_id=entrenador.id).order_by(Partido.fecha.desc()).all()
+    eq_actual = equipo_actual()
+    lista = Partido.query.filter_by(equipo_id=eq_actual.id).order_by(Partido.fecha.desc()).all()
     return render_template('partidos.html', entrenador=entrenador, partidos=lista)
 
 
@@ -836,7 +1040,8 @@ def partidos():
 @login_requerido
 def partido_nuevo():
     entrenador = entrenador_actual()
-    jugadoras = Jugadora.query.filter_by(entrenador_id=entrenador.id).order_by(Jugadora.apellido).all()
+    eq_actual = equipo_actual()
+    jugadoras = Jugadora.query.filter_by(equipo_id=eq_actual.id).order_by(Jugadora.apellido).all()
 
     if request.method == 'POST':
         try:
@@ -845,6 +1050,7 @@ def partido_nuevo():
 
             partido = Partido(
                 entrenador_id=entrenador.id,
+                equipo_id=eq_actual.id if eq_actual else None,
                 rival=request.form.get('rival', '').strip(),
                 fecha=fecha,
                 lugar=request.form.get('lugar', 'Local'),
@@ -878,8 +1084,9 @@ def partido_nuevo():
 @login_requerido
 def partido_editar(partido_id):
     entrenador = entrenador_actual()
+    eq_actual = equipo_actual()
     partido = Partido.query.filter_by(id=partido_id, entrenador_id=entrenador.id).first_or_404()
-    jugadoras = Jugadora.query.filter_by(entrenador_id=entrenador.id).order_by(Jugadora.apellido).all()
+    jugadoras = Jugadora.query.filter_by(equipo_id=eq_actual.id).order_by(Jugadora.apellido).all()
 
     if request.method == 'POST':
         try:
@@ -1509,10 +1716,11 @@ def aplicar_migraciones():
 def rotacion_configurar(partido_id):
     """Pantalla de configuración del módulo de rotación para un partido."""
     entrenador = entrenador_actual()
+    eq_actual = equipo_actual()
     partido = Partido.query.filter_by(id=partido_id, entrenador_id=entrenador.id).first_or_404()
     config = ConfiguracionPartido.query.filter_by(partido_id=partido.id).first()
 
-    jugadoras = Jugadora.query.filter_by(entrenador_id=entrenador.id).order_by(Jugadora.apellido).all()
+    jugadoras = Jugadora.query.filter_by(equipo_id=eq_actual.id).order_by(Jugadora.apellido).all()
     convocadas_ids = {c.jugadora_id for c in partido.convocadas}
 
     if request.method == 'POST':
@@ -1566,6 +1774,7 @@ def rotacion_sugerencias(partido_id):
     Devuelve para cada convocada: min teóricos, min jugados (en tiempo real), déficit.
     """
     entrenador = entrenador_actual()
+    eq_actual = equipo_actual()
     partido = Partido.query.filter_by(id=partido_id, entrenador_id=entrenador.id).first_or_404()
     config = ConfiguracionPartido.query.filter_by(partido_id=partido.id).first()
 
@@ -1576,7 +1785,7 @@ def rotacion_sugerencias(partido_id):
         return jsonify({'ok': True, 'jugadoras': []})
 
     # Construir el plan teórico
-    jugadoras = Jugadora.query.filter_by(entrenador_id=entrenador.id).all()
+    jugadoras = Jugadora.query.filter_by(equipo_id=eq_actual.id).all()
     try:
         mc = rotacion_adapter.crear_match_controller(partido, jugadoras, config)
     except Exception as e:
@@ -1640,6 +1849,7 @@ def rotacion_sugerencias(partido_id):
 def rotacion_plan(partido_id):
     """Pantalla de plan del partido: prioridad calculada y minutos teóricos."""
     entrenador = entrenador_actual()
+    eq_actual = equipo_actual()
     partido = Partido.query.filter_by(id=partido_id, entrenador_id=entrenador.id).first_or_404()
     config = ConfiguracionPartido.query.filter_by(partido_id=partido.id).first()
 
@@ -1652,7 +1862,7 @@ def rotacion_plan(partido_id):
         return redirect(url_for('partido_editar', partido_id=partido.id))
 
     # Construir el MatchController con los datos reales
-    jugadoras = Jugadora.query.filter_by(entrenador_id=entrenador.id).all()
+    jugadoras = Jugadora.query.filter_by(equipo_id=eq_actual.id).all()
 
     try:
         mc = rotacion_adapter.crear_match_controller(partido, jugadoras, config)
@@ -1700,6 +1910,7 @@ def rotacion_plan(partido_id):
 def planificador_configurar(partido_id):
     """Pantalla de configuración del plan: elegir duración del turno."""
     entrenador = entrenador_actual()
+    eq_actual = equipo_actual()
     partido = Partido.query.filter_by(id=partido_id, entrenador_id=entrenador.id).first_or_404()
     config = ConfiguracionPartido.query.filter_by(partido_id=partido.id).first()
 
@@ -1745,7 +1956,7 @@ def planificador_configurar(partido_id):
 
             # Generar plan según modo
             if modo_generacion in ('completo', 'titulares'):
-                jugadoras = Jugadora.query.filter_by(entrenador_id=entrenador.id).all()
+                jugadoras = Jugadora.query.filter_by(equipo_id=eq_actual.id).all()
                 mc = rotacion_adapter.crear_match_controller(partido, jugadoras, config)
 
                 if modo_generacion == 'completo':
@@ -1830,6 +2041,9 @@ def _armar_datos_plan(partido, entrenador):
         return None
     config = ConfiguracionPartido.query.filter_by(partido_id=partido.id).first()
 
+    # El equipo del partido (puede ser != equipo activo si llegamos por URL directa)
+    equipo_id_partido = partido.equipo_id
+
     # Convocadas
     convocadas_ids = {c.jugadora_id for c in partido.convocadas}
     jugadoras = Jugadora.query.filter(
@@ -1848,7 +2062,7 @@ def _armar_datos_plan(partido, entrenador):
     minutos_teoricos_por_id = {}
     if config:
         try:
-            todas_jugadoras = Jugadora.query.filter_by(entrenador_id=entrenador.id).all()
+            todas_jugadoras = Jugadora.query.filter_by(equipo_id=equipo_id_partido).all()
             mc = rotacion_adapter.crear_match_controller(partido, todas_jugadoras, config)
             for pl in mc.players:
                 minutos_teoricos_por_id[pl.id] = pl.minutos_teoricos
@@ -2449,6 +2663,7 @@ def _stats_jugadora(jugadora, partidos):
 @login_requerido
 def estadisticas():
     entrenador = entrenador_actual()
+    eq_actual = equipo_actual()
     periodo = request.args.get('periodo', 'mes')
     inicio, fin, label = _calcular_periodo(periodo)
 
@@ -2460,7 +2675,7 @@ def estadisticas():
         Partido.estado != 'pendiente'
     ).all()
 
-    jugadoras = Jugadora.query.filter_by(entrenador_id=entrenador.id).order_by(Jugadora.apellido).all()
+    jugadoras = Jugadora.query.filter_by(equipo_id=eq_actual.id).order_by(Jugadora.apellido).all()
 
     # Calcular stats por jugadora
     stats = []
