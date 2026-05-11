@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Mis Equipos{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>🏑 Mis Equipos</h1>
+  <p class="muted">Gestioná tus equipos. Cada equipo tiene su propio plantel, asistencias y partidos.</p>
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for category, message in messages %}
+    <div class="flash flash-{{ category }}">{{ message }}</div>
+  {% endfor %}
+{% endwith %}
+
+<!-- Lista de equipos -->
+<div class="equipos-grid">
+  {% for eq in equipos %}
+  <div class="equipo-card {% if eq_activo and eq.id == eq_activo.id %}equipo-card-activo{% endif %}">
+    <div class="equipo-card-header">
+      <div class="equipo-card-titulo">
+        {% if eq_activo and eq.id == eq_activo.id %}
+        <span class="badge-activo">● Activo</span>
+        {% endif %}
+        <h3>{{ eq.nombre }}</h3>
+      </div>
+    </div>
+
+    <div class="equipo-card-stats">
+      <div class="equipo-stat">
+        <div class="equipo-stat-num">{{ contadores[eq.id].jugadoras }}</div>
+        <div class="equipo-stat-label">Jugadoras</div>
+      </div>
+      <div class="equipo-stat">
+        <div class="equipo-stat-num">{{ contadores[eq.id].partidos }}</div>
+        <div class="equipo-stat-label">Partidos</div>
+      </div>
+    </div>
+
+    <div class="equipo-card-actions">
+      {% if not eq_activo or eq.id != eq_activo.id %}
+      <form method="POST" action="{{ url_for('equipo_activar', equipo_id=eq.id) }}" style="display: inline;">
+        <button type="submit" class="btn btn-primary btn-sm">Activar</button>
+      </form>
+      {% endif %}
+
+      <button type="button" class="btn btn-secondary btn-sm"
+              onclick="mostrarEdit({{ eq.id }}, '{{ eq.nombre|replace("'", "\\'") }}')">
+        ✏️ Renombrar
+      </button>
+
+      {% if equipos|length > 1 %}
+      <form method="POST" action="{{ url_for('equipo_borrar', equipo_id=eq.id) }}"
+            onsubmit="return confirm('¿Seguro que querés borrar el equipo {{ eq.nombre }}? Se eliminarán TODOS sus datos (plantel, partidos, asistencias). Esta acción NO se puede deshacer.');"
+            style="display: inline;">
+        <button type="submit" class="btn btn-danger btn-sm">🗑 Borrar</button>
+      </form>
+      {% endif %}
+    </div>
+
+    <!-- Form de edición (oculto por defecto) -->
+    <form method="POST" action="{{ url_for('equipo_editar', equipo_id=eq.id) }}"
+          id="form-edit-{{ eq.id }}" class="equipo-edit-form" style="display: none;">
+      <input type="text" name="nombre" value="{{ eq.nombre }}" maxlength="80" required>
+      <button type="submit" class="btn btn-primary btn-sm">Guardar</button>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="ocultarEdit({{ eq.id }})">Cancelar</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Crear nuevo equipo -->
+<div class="planif-card" style="margin-top: 24px;">
+  <h2>➕ Crear nuevo equipo</h2>
+  <form method="POST" action="{{ url_for('equipo_nuevo') }}" class="form-inline">
+    <input type="text" name="nombre" placeholder="Nombre del equipo (ej: Sub-16, Primera, etc.)" maxlength="80" required>
+    <button type="submit" class="btn btn-primary">Crear</button>
+  </form>
+</div>
+
+<script>
+function mostrarEdit(id, nombre) {
+  const form = document.getElementById('form-edit-' + id);
+  if (form) {
+    form.style.display = 'flex';
+    form.querySelector('input[name=nombre]').focus();
+  }
+}
+function ocultarEdit(id) {
+  const form = document.getElementById('form-edit-' + id);
+  if (form) form.style.display = 'none';
+}
+</script>
+
+{% endblock %}
