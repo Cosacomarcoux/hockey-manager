@@ -1521,9 +1521,14 @@ def partido_cuarto(partido_id, accion):
     if accion == 'siguiente' and partido.cuarto_actual < 4:
         partido.cuarto_actual += 1
         partido.cronometro_segundos = 0
+        # Resetear cronometro_iniciado para que cronometro_actual calcule desde 0
+        if partido.cronometro_iniciado:
+            partido.cronometro_iniciado = datetime.utcnow()
     elif accion == 'anterior' and partido.cuarto_actual > 1:
         partido.cuarto_actual -= 1
         partido.cronometro_segundos = 0
+        if partido.cronometro_iniciado:
+            partido.cronometro_iniciado = datetime.utcnow()
 
     db.session.commit()
     return jsonify(_serializar_estado(partido))
