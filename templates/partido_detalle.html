@@ -907,6 +907,8 @@ if (liveApp) {
   let procesandoCambio = false;        // bloqueo: solo 1 cambio a la vez
   let ultimoHtmlZona = '';              // para evitar re-render innecesario
   let turnoFijado = null;               // turno fijado por usuario (no avanza solo)
+  let cambiosPendientesCongelados = null; // lista congelada mientras se hacen cambios
+  let turnoCongelado = null;              // turno al que pertenecen los cambios congelados
 
   // Empareja "salidas" con "entradas".
   function emparejarCambios(cambios) {
@@ -1010,14 +1012,38 @@ if (liveApp) {
     // Poblar set con los IDs de jugadoras de la zona (para atenuar en la lista de abajo)
     idsEnZonaCambios = new Set(info.cambios_proximos.map(c => c.jugadora_id));
 
-    // El backend ya nos da los cambios PENDIENTES (filtrados según el estado actual de la cancha)
-    // Solo los renderizamos directamente.
-    const cambiosPendientes = info.cambios_proximos;
+    // CONGELAR cambios: si el usuario ya empezó a hacer cambios de este turno,
+    // no actualizamos la lista hasta que termine todos o toque Saltar.
+    // Así al hacer 1 de 3 cambios, los otros 2 siguen visibles.
+    if (turnoCongelado === turnoObjetivo && cambiosPendientesCongelados !== null) {
+      // Usar la lista congelada en lugar de la del server
+      // PERO si el server dice que ya no hay cambios (cancha alineada), descongelar
+      if (info.cancha_alineada) {
+        cambiosPendientesCongelados = null;
+        turnoCongelado = null;
+      }
+    } else if (turnoCongelado !== turnoObjetivo) {
+      // Cambió el turno objetivo, limpiar congelado
+      cambiosPendientesCongelados = null;
+      turnoCongelado = null;
+    }
 
-    // Si no quedan cambios pendientes (raro pero posible), ocultar
+    // Lista a mostrar: congelada si existe, sino la del server
+    const cambiosPendientes = (cambiosPendientesCongelados !== null)
+      ? cambiosPendientesCongelados
+      : info.cambios_proximos;
+
+    // Si no quedan cambios pendientes, ocultar
     if (cambiosPendientes.length === 0) {
       zona.style.display = 'none';
       return;
+    }
+
+    // Si no teníamos lista congelada, congelar la actual
+    // (para que los próximos renders no la pisen mientras el usuario trabaja)
+    if (cambiosPendientesCongelados === null) {
+      cambiosPendientesCongelados = [...cambiosPendientes];
+      turnoCongelado = turnoObjetivo;
     }
 
     // === Mostrar la card ===
@@ -1157,6 +1183,20 @@ if (liveApp) {
         return;
       }
       const data = await r2.json();
+
+      // Sacar este par de la lista congelada (cambio hecho)
+      // Así los demás cambios pendientes siguen mostrándose
+      if (cambiosPendientesCongelados !== null) {
+        cambiosPendientesCongelados = cambiosPendientesCongelados.filter(c =>
+          c.jugadora_id !== entraId && c.jugadora_id !== saleId
+        );
+        // Si ya no quedan cambios congelados, limpiar
+        if (cambiosPendientesCongelados.length === 0) {
+          cambiosPendientesCongelados = null;
+          turnoCongelado = null;
+        }
+      }
+
       renderEstado(data);
     } catch (err) {
       alert('Error de conexión: ' + err.message);
@@ -1175,6 +1215,9 @@ if (liveApp) {
       if (ultimoTurnoProximo !== null) {
         turnoFijado = ultimoTurnoProximo + 1;
       }
+      // Limpiar congelado
+      cambiosPendientesCongelados = null;
+      turnoCongelado = null;
       const zona = document.getElementById('zona-cambios-rapidos');
       if (zona) zona.style.display = 'none';
       ultimoHtmlZona = '';
