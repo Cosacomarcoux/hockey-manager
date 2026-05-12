@@ -255,6 +255,9 @@
         <button type="button" id="btn-cambios-hechos" class="btn btn-success btn-sm" style="display: none;">
           ✓ Listo, los hice
         </button>
+        <button type="button" id="btn-saltar-cambio" class="btn btn-secondary btn-sm" style="display: none;">
+          ⏭ Saltar
+        </button>
       </div>
     </div>
     <div id="zona-cambios-lista"></div>
@@ -903,6 +906,7 @@ if (liveApp) {
   let ultimoTurnoProximo = null;
   let procesandoCambio = false;        // bloqueo: solo 1 cambio a la vez
   let ultimoHtmlZona = '';              // para evitar re-render innecesario
+  let turnoFijado = null;               // turno fijado por usuario (no avanza solo)
 
   // Empareja "salidas" con "entradas".
   function emparejarCambios(cambios) {
@@ -963,7 +967,18 @@ if (liveApp) {
 
     // Si cambió el turno_proximo (server pasó de mostrar cambios T1->T2 a T2->T3),
     // limpiamos los "ya hechos" porque eran del par anterior
-    const turnoObjetivo = info.turno_objetivo || info.turno_proximo;
+    let turnoObjetivo = info.turno_objetivo || info.turno_proximo;
+
+    // Si el usuario fijó un turno (saltó cambios), respetarlo
+    if (turnoFijado !== null) {
+      const turnoActualServer = info.turno_actual || 1;
+      if (turnoFijado <= turnoActualServer) {
+        turnoFijado = null; // El server ya avanzó más allá, reseteamos
+      } else {
+        turnoObjetivo = turnoFijado; // Mantener turno fijado
+      }
+    }
+
     if (turnoObjetivo !== ultimoTurnoProximo) {
       ultimoTurnoProximo = turnoObjetivo;
       cambiosYaHechos.clear();
@@ -1038,8 +1053,11 @@ if (liveApp) {
     if (enAlarma) zona.classList.add('zona-cambios-alarma');
     else zona.classList.remove('zona-cambios-alarma');
 
-    // El botón "Listo, los hice" solo aparece si estás atrasado
-    btnHechos.style.display = info.atrasado ? 'inline-block' : 'none';
+    // Botón "Listo, los hice" ya no se usa
+    btnHechos.style.display = 'none';
+    // Botón "Saltar" siempre visible cuando hay cambios pendientes
+    const btnSaltar = document.getElementById('btn-saltar-cambio');
+    if (btnSaltar) btnSaltar.style.display = 'inline-block';
 
     // Disparar alarma de sonido si corresponde
     if (enAlarma && !alarmaSonada) {
@@ -1145,31 +1163,54 @@ if (liveApp) {
     }
   }
 
-  // Listener del botón "Listo, los hice" → fuerza refresh del estado
+  // Listener del botón "Listo, los hice" (compatibilidad)
   document.addEventListener('click', (e) => {
     if (e.target && e.target.id === 'btn-cambios-hechos') {
       cambiosYaHechos.clear();
       fetch(`/partido/${partidoId}/estado`).then(r => r.json()).then(renderEstado);
     }
+
+    // Botón "Saltar" → fijar siguiente turno y ocultar card
+    if (e.target && e.target.id === 'btn-saltar-cambio') {
+      if (ultimoTurnoProximo !== null) {
+        turnoFijado = ultimoTurnoProximo + 1;
+      }
+      const zona = document.getElementById('zona-cambios-rapidos');
+      if (zona) zona.style.display = 'none';
+      ultimoHtmlZona = '';
+      fetch(`/partido/${partidoId}/estado`).then(r => r.json()).then(renderEstado);
+    }
   });
 
-  // Sonido suave de alarma usando Web Audio API (no requiere archivo externo)
+  // AudioContext persistente para mobile (iOS/Android bloquea audio sin gesto)
+  let _audioCtx = null;
+  function getAudioCtx() {
+    if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (_audioCtx.state === 'suspended') _audioCtx.resume();
+    return _audioCtx;
+  }
+  // Inicializar con el primer toque del usuario
+  document.addEventListener('touchstart', () => getAudioCtx(), { once: true });
+  document.addEventListener('click', () => getAudioCtx(), { once: true });
+
+  // Sonido de alarma: 3 beeps cortos (funciona en mobile)
   function sonarAlarma() {
     try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.frequency.value = 880;  // La (suave)
-      gain.gain.setValueAtTime(0, ctx.currentTime);
-      gain.gain.linearRampToValueAtTime(0.15, ctx.currentTime + 0.05);
-      gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.5);
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + 0.5);
+      const ctx = getAudioCtx();
+      [0, 0.3, 0.6].forEach(delay => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.value = 880;
+        gain.gain.setValueAtTime(0, ctx.currentTime + delay);
+        gain.gain.linearRampToValueAtTime(0.2, ctx.currentTime + delay + 0.05);
+        gain.gain.linearRampToValueAtTime(0, ctx.currentTime + delay + 0.25);
+        osc.start(ctx.currentTime + delay);
+        osc.stop(ctx.currentTime + delay + 0.25);
+      });
     } catch (err) {
-      // Si no hay AudioContext disponible, no pasa nada
-      console.log('Audio no disponible');
+      console.log('Audio no disponible:', err);
     }
   }
 
