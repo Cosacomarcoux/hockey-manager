@@ -255,9 +255,6 @@
         <button type="button" id="btn-cambios-hechos" class="btn btn-success btn-sm" style="display: none;">
           ✓ Listo, los hice
         </button>
-        <button type="button" id="btn-saltar-cambio" class="btn btn-secondary btn-sm" style="display: none;">
-          ⏭ Saltar
-        </button>
       </div>
     </div>
     <div id="zona-cambios-lista"></div>
@@ -893,20 +890,52 @@ if (liveApp) {
   // ============================================================
   // PLAN EN VIVO: zona de cambios
   // ============================================================
-  let alarmaSonada = false;
-  let ultimoTurnoAlarma = null;
-  let ultimoHtmlZona = '';
-  let procesandoCambio = false;
-  let idsEnZonaCambios = new Set();
+  let alarmaSonada = false;       // para evitar repetir el sonido
+  let ultimoTurnoAlarma = null;   // para resetear cuando cambia el turno
 
-  // Lista congelada de cambios mientras el usuario los hace
-  // Se congela cuando aparece el turno, se limpia cuando:
-  // a) El usuario hizo todos los cambios (lista vacía)
-  // b) El usuario tocó Saltar
-  // c) Cambió el turno objetivo
-  let cambiosPendientesCongelados = null;
-  let turnoCongelado = null;
+  // Set de IDs que SE HICIERON en cancha pero todavía pertenecen a un cambio planificado.
+  // Cuando vos tocás "Tocar para hacer cambio" (sale + entra), se agregan los dos IDs acá.
+  // Mientras estos IDs estén en este set, la card sigue mostrando el cambio como "hecho"
+  // (atenuado/tachado) en lugar de quitarlo de la lista. Se limpian cuando:
+  //   - Tocás "Listo, los hice"
+  //   - Cambia el turno_proximo en el server
+  let cambiosYaHechos = new Set();
   let ultimoTurnoProximo = null;
+  let procesandoCambio = false;        // bloqueo: solo 1 cambio a la vez
+  let ultimoHtmlZona = '';              // para evitar re-render innecesario
+
+  // Empareja "salidas" con "entradas".
+  function emparejarCambios(cambios) {
+    const salen = cambios.filter(c => c.tipo === 'sale');
+    const entran = cambios.filter(c => c.tipo === 'entra');
+    const usadas = new Set();
+    const pares = [];
+
+    for (const s of salen) {
+      const match = entran.find(e =>
+        !usadas.has(e.jugadora_id) && e.posicion === s.posicion
+      );
+      if (match) {
+        pares.push({ sale: s, entra: match });
+        usadas.add(match.jugadora_id);
+      }
+    }
+    for (const s of salen) {
+      if (pares.find(p => p.sale.jugadora_id === s.jugadora_id)) continue;
+      const match = entran.find(e => !usadas.has(e.jugadora_id));
+      if (match) {
+        pares.push({ sale: s, entra: match });
+        usadas.add(match.jugadora_id);
+      } else {
+        pares.push({ sale: s, entra: null });
+      }
+    }
+    for (const e of entran) {
+      if (usadas.has(e.jugadora_id)) continue;
+      pares.push({ sale: null, entra: e });
+    }
+    return pares;
+  }
 
   function colorPosicion(pos) {
     const map = {
@@ -914,30 +943,8 @@ if (liveApp) {
       'Defensora': '#534AB7',
       'Volante':   '#0F6E56',
       'Delantera': '#993C1D',
-      'Mediocampista': '#0F6E56',
     };
     return map[pos] || '#888';
-  }
-
-  function emparejarCambios(cambios) {
-    const salen = cambios.filter(c => c.tipo === 'sale');
-    const entran = cambios.filter(c => c.tipo === 'entra');
-    const usadas = new Set();
-    const pares = [];
-    for (const s of salen) {
-      const match = entran.find(e => !usadas.has(e.jugadora_id) && e.posicion === s.posicion);
-      if (match) { pares.push({ sale: s, entra: match }); usadas.add(match.jugadora_id); }
-    }
-    for (const s of salen) {
-      if (pares.find(p => p.sale.jugadora_id === s.jugadora_id)) continue;
-      const match = entran.find(e => !usadas.has(e.jugadora_id));
-      if (match) { pares.push({ sale: s, entra: match }); usadas.add(match.jugadora_id); }
-      else pares.push({ sale: s, entra: null });
-    }
-    for (const e of entran) {
-      if (!usadas.has(e.jugadora_id)) pares.push({ sale: null, entra: e });
-    }
-    return pares;
   }
 
   function actualizarPlanEnVivo(data) {
@@ -945,159 +952,161 @@ if (liveApp) {
     const zona = document.getElementById('zona-cambios-rapidos');
     const lista = document.getElementById('zona-cambios-lista');
     const titulo = document.getElementById('zona-cambios-titulo');
-    const btnSaltar = document.getElementById('btn-saltar-cambio');
     const btnHechos = document.getElementById('btn-cambios-hechos');
 
-    // Sin plan → ocultar
     if (!info || !info.tiene_plan) {
       zona.style.display = 'none';
-      idsEnZonaCambios = new Set();
+      idsEnZonaCambios.clear();
+      ultimoHtmlZona = '';
       return;
     }
 
-    // SIEMPRE mostrar si hay plan
-    zona.style.display = 'block';
-    if (btnHechos) btnHechos.style.display = 'none';
+    // Si cambió el turno_proximo (server pasó de mostrar cambios T1->T2 a T2->T3),
+    // limpiamos los "ya hechos" porque eran del par anterior
+    const turnoObjetivo = info.turno_objetivo || info.turno_proximo;
+    if (turnoObjetivo !== ultimoTurnoProximo) {
+      ultimoTurnoProximo = turnoObjetivo;
+      cambiosYaHechos.clear();
+    }
 
-    // Links al planificador
+    // Resetear alarma si cambió el turno actual
+    if (info.turno_actual !== ultimoTurnoAlarma) {
+      ultimoTurnoAlarma = info.turno_actual;
+      alarmaSonada = false;
+    }
+
+    // Si no hay cambios planificados → ocultar
+    if (!info.cambios_proximos || info.cambios_proximos.length === 0) {
+      zona.style.display = 'none';
+      idsEnZonaCambios.clear();
+      ultimoHtmlZona = '';
+      return;
+    }
+
+    // Si ya estoy alineado con el target Y hay próximo en otro cuarto (descanso)
+    // → ocultar (no hay nada que hacer)
+    if (info.cancha_alineada && (!info.turno_proximo || !info.proximo_en_mismo_cuarto)) {
+      zona.style.display = 'none';
+      idsEnZonaCambios.clear();
+      ultimoHtmlZona = '';
+      return;
+    }
+
+    // Poblar set con los IDs de jugadoras de la zona (para atenuar en la lista de abajo)
+    idsEnZonaCambios = new Set(info.cambios_proximos.map(c => c.jugadora_id));
+
+    // El backend ya nos da los cambios PENDIENTES (filtrados según el estado actual de la cancha)
+    // Solo los renderizamos directamente.
+    const cambiosPendientes = info.cambios_proximos;
+
+    // Si no quedan cambios pendientes (raro pero posible), ocultar
+    if (cambiosPendientes.length === 0) {
+      zona.style.display = 'none';
+      return;
+    }
+
+    // === Mostrar la card ===
+    zona.style.display = 'block';
+
+    // Configurar links al planificador
     const urlPlan = `/partido/${partidoId}/planificador`;
     const linkTitulo = document.getElementById('zona-cambios-link');
     const linkVerPlan = document.getElementById('zona-cambios-ver-plan');
     if (linkTitulo) linkTitulo.href = urlPlan;
     if (linkVerPlan) linkVerPlan.href = urlPlan;
 
-    const turnoObjetivo = info.turno_objetivo || info.turno_proximo || info.turno_actual;
-
-    // Si cambió el turno objetivo, limpiar congelado
-    if (turnoObjetivo !== ultimoTurnoProximo) {
-      ultimoTurnoProximo = turnoObjetivo;
-      cambiosPendientesCongelados = null;
-      turnoCongelado = null;
-    }
-
-    // Resetear alarma cuando cambia el turno (por cuarto + número)
-    const turnoKey = (info.cuarto || data.cuarto_actual || 1) + '_' + turnoObjetivo;
-    if (turnoKey !== ultimoTurnoAlarma) {
-      ultimoTurnoAlarma = turnoKey;
-      alarmaSonada = false;
-    }
-
-    // Si ya estamos alineados → sin cambios pendientes
-    const cambiosServer = info.cambios_proximos || [];
-
-    if (cambiosServer.length === 0 || info.cancha_alineada) {
-      // Limpiar congelado si ya no hay nada
-      cambiosPendientesCongelados = null;
-      turnoCongelado = null;
-      idsEnZonaCambios = new Set();
-      titulo.innerHTML = `✅ T${info.turno_actual || 1} — Sin cambios pendientes`;
-      zona.classList.remove('zona-cambios-alarma');
-      if (btnSaltar) btnSaltar.style.display = 'none';
-      lista.innerHTML = '';
-      ultimoHtmlZona = '';
-      return;
-    }
-
-    // === SISTEMA DE CONGELADO ===
-    // Cuando aparecen cambios nuevos para un turno, congelar la lista
-    // para que al hacer 1 de 3 cambios los otros 2 sigan visibles
-    if (cambiosPendientesCongelados === null) {
-      // Primera vez que vemos estos cambios → congelar
-      cambiosPendientesCongelados = [...cambiosServer];
-      turnoCongelado = turnoObjetivo;
-    }
-    // Sincronizar: sacar de la lista congelada los cambios que el server dice que ya se hicieron
-    // (jugadoras que ya no aparecen en cambios_proximos del server)
-    const idsServer = new Set(cambiosServer.map(c => c.jugadora_id));
-    cambiosPendientesCongelados = cambiosPendientesCongelados.filter(c => idsServer.has(c.jugadora_id));
-
-    // Si ya no quedan cambios congelados → limpiar y volver
-    if (cambiosPendientesCongelados.length === 0) {
-      cambiosPendientesCongelados = null;
-      turnoCongelado = null;
-      idsEnZonaCambios = new Set();
-      titulo.innerHTML = `✅ T${info.turno_actual || 1} — Sin cambios pendientes`;
-      zona.classList.remove('zona-cambios-alarma');
-      if (btnSaltar) btnSaltar.style.display = 'none';
-      lista.innerHTML = '';
-      ultimoHtmlZona = '';
-      return;
-    }
-
-    const cambiosMostrar = cambiosPendientesCongelados;
-    idsEnZonaCambios = new Set(cambiosMostrar.map(c => c.jugadora_id));
-
-    // Título y alarma
-    const esMomento = (
-      info.segundos_hasta_cambio === null ||
-      info.segundos_hasta_cambio === 0 ||
-      (info.segundos_hasta_cambio > 0 && info.segundos_hasta_cambio <= 30)
-    );
-
+    // Texto de título según si vamos a tiempo o atrasados
     let textoTiempo = '';
-    if (!esMomento && info.segundos_hasta_cambio > 0) {
+    if (info.cancha_alineada_actual && info.segundos_hasta_cambio !== null && info.segundos_hasta_cambio !== undefined && info.segundos_hasta_cambio > 0) {
       const m = Math.floor(info.segundos_hasta_cambio / 60);
       const s = info.segundos_hasta_cambio % 60;
       textoTiempo = m > 0 ? ` (en ${m}m ${String(s).padStart(2,'0')}s)` : ` (en ${s}s)`;
-    } else if (esMomento) {
-      textoTiempo = ' ← ¡Ahora!';
+    } else if (info.atrasado) {
+      textoTiempo = ' (atrasado!)';
+    } else if (!info.cancha_alineada) {
+      textoTiempo = ' (pendientes)';
     }
 
-    titulo.innerHTML = `${esMomento ? '🔔' : '⚡'} Cambios T${turnoObjetivo}${textoTiempo}`;
+    const enAlarma = info.cancha_alineada_actual
+        && info.segundos_hasta_cambio !== null
+        && info.segundos_hasta_cambio <= 30
+        && info.segundos_hasta_cambio > 0
+        && data.cronometro_corriendo;
+    const icono = info.atrasado ? '⚠️' : (enAlarma ? '🔔' : '⚡');
+    titulo.innerHTML = `${icono} Cambios para T${turnoObjetivo}${textoTiempo}`;
 
-    if (esMomento) zona.classList.add('zona-cambios-alarma');
+    if (enAlarma) zona.classList.add('zona-cambios-alarma');
     else zona.classList.remove('zona-cambios-alarma');
 
-    if (esMomento && data.cronometro_corriendo && !alarmaSonada) {
+    // El botón "Listo, los hice" solo aparece si estás atrasado
+    btnHechos.style.display = info.atrasado ? 'inline-block' : 'none';
+
+    // Disparar alarma de sonido si corresponde
+    if (enAlarma && !alarmaSonada) {
       sonarAlarma();
       alarmaSonada = true;
     }
 
-    // Botón Saltar: visible cuando hay cambios
-    if (btnSaltar) btnSaltar.style.display = 'inline-block';
+    // === Renderizar pares ===
+    const pares = emparejarCambios(cambiosPendientes);
 
-    // Renderizar pares
-    const pares = emparejarCambios(cambiosMostrar);
     let html = '';
     for (const par of pares) {
       let cardSale = '<div class="swap-card-empty">—</div>';
       let cardEntra = '<div class="swap-card-empty">—</div>';
+
       if (par.sale) {
-        const col = colorPosicion(par.sale.posicion);
-        cardSale = `<div class="swap-card swap-card-sale">
-              <div class="swap-ini" style="background:${col};">${par.sale.iniciales}</div>
-              <div class="swap-name-block">
-                <div class="swap-name">${par.sale.nombre} ${par.sale.apellido[0]}.</div>
-                <div class="swap-pos">${par.sale.posicion}</div>
-              </div>
-              <span class="swap-badge swap-badge-sale">Sale</span>
-            </div>`;
+        const colSale = colorPosicion(par.sale.posicion);
+        cardSale = `
+          <div class="swap-card swap-card-sale">
+            <div class="swap-ini" style="background: ${colSale};">${par.sale.iniciales}</div>
+            <div class="swap-name-block">
+              <div class="swap-name">${par.sale.nombre} ${par.sale.apellido[0]}.</div>
+              <div class="swap-pos">${par.sale.posicion}</div>
+            </div>
+            <span class="swap-badge swap-badge-sale">Sale</span>
+          </div>
+        `;
       }
       if (par.entra) {
-        const col = colorPosicion(par.entra.posicion);
+        const colEntra = colorPosicion(par.entra.posicion);
         const saleId = par.sale ? par.sale.jugadora_id : '';
-        cardEntra = `<div class="swap-card swap-card-entra swap-card-clickable"
-                 data-entra-id="${par.entra.jugadora_id}"
-                 data-sale-id="${saleId}">
-              <div class="swap-ini" style="background:${col};">${par.entra.iniciales}</div>
-              <div class="swap-name-block">
-                <div class="swap-name">${par.entra.nombre} ${par.entra.apellido[0]}.</div>
-                <div class="swap-pos">${par.entra.posicion}</div>
-              </div>
-              <span class="swap-badge swap-badge-entra">Tocar para hacer cambio</span>
-            </div>`;
+        cardEntra = `
+          <div class="swap-card swap-card-entra swap-card-clickable"
+               data-entra-id="${par.entra.jugadora_id}"
+               data-sale-id="${saleId}">
+            <div class="swap-ini" style="background: ${colEntra};">${par.entra.iniciales}</div>
+            <div class="swap-name-block">
+              <div class="swap-name">${par.entra.nombre} ${par.entra.apellido[0]}.</div>
+              <div class="swap-pos">${par.entra.posicion}</div>
+            </div>
+            <span class="swap-badge swap-badge-entra">Tocar para hacer cambio</span>
+          </div>
+        `;
       }
-      html += `<div class="swap-row">${cardSale}<div class="swap-arrow">⇄</div>${cardEntra}</div>`;
+
+      html += `
+        <div class="swap-row">
+          ${cardSale}
+          <div class="swap-arrow">⇄</div>
+          ${cardEntra}
+        </div>
+      `;
     }
 
+    // Solo re-renderizar si el HTML cambió (evita destruir listeners durante el polling)
     if (html !== ultimoHtmlZona) {
       lista.innerHTML = html;
       ultimoHtmlZona = html;
+
+      // Listener: tap en card "Entra" → hace cambio doble (sale la del par + entra esta)
       lista.querySelectorAll('.swap-card-clickable').forEach(c => {
         c.addEventListener('click', async () => {
-          if (procesandoCambio) return;
+          if (procesandoCambio) return;  // bloqueo anti-doble-click
           procesandoCambio = true;
+          // Marcar visualmente la card como procesando
           c.classList.add('swap-card-procesando');
+
           const entraId = parseInt(c.dataset.entraId);
           const saleId = c.dataset.saleId ? parseInt(c.dataset.saleId) : null;
           try {
@@ -1110,73 +1119,57 @@ if (liveApp) {
     }
   }
 
-  // Botón Saltar: descarta los cambios de este turno y pasa al siguiente
-  document.addEventListener('click', (e) => {
-    if (e.target && e.target.id === 'btn-saltar-cambio') {
-      cambiosPendientesCongelados = null;
-      turnoCongelado = null;
-      ultimoHtmlZona = '';
-      fetch(`/partido/${partidoId}/estado`).then(r => r.json()).then(renderEstado);
-    }
-  });
-
   // Ejecuta sale + entra en una sola acción
   async function ejecutarCambioCompleto(saleId, entraId) {
     try {
       if (saleId) {
-        const r1 = await fetch(`/partido/${partidoId}/jugadora/${saleId}/salir`, { method: 'POST' });
-        if (!r1.ok) { alert('Error al sacar la jugadora'); return; }
-      }
-      const r2 = await fetch(`/partido/${partidoId}/jugadora/${entraId}/entrar`, { method: 'POST' });
-      if (!r2.ok) { alert('Error al meter la jugadora'); return; }
-      const data = await r2.json();
-      // Sacar este par de la lista congelada
-      if (cambiosPendientesCongelados !== null) {
-        cambiosPendientesCongelados = cambiosPendientesCongelados.filter(c =>
-          c.jugadora_id !== entraId && c.jugadora_id !== (saleId || -1)
-        );
-        if (cambiosPendientesCongelados.length === 0) {
-          cambiosPendientesCongelados = null;
-          turnoCongelado = null;
+        const r1 = await fetch(`/partido/${partidoId}/jugadora/${saleId}/salir`, {
+          method: 'POST'
+        });
+        if (!r1.ok) {
+          alert('Error al sacar la jugadora');
+          return;
         }
       }
+      const r2 = await fetch(`/partido/${partidoId}/jugadora/${entraId}/entrar`, {
+        method: 'POST'
+      });
+      if (!r2.ok) {
+        alert('Error al meter la jugadora');
+        return;
+      }
+      const data = await r2.json();
       renderEstado(data);
     } catch (err) {
       alert('Error de conexión: ' + err.message);
     }
   }
 
-  // (btn-cambios-hechos ya no se usa, se mantiene por compatibilidad)
+  // Listener del botón "Listo, los hice" → fuerza refresh del estado
+  document.addEventListener('click', (e) => {
+    if (e.target && e.target.id === 'btn-cambios-hechos') {
+      cambiosYaHechos.clear();
+      fetch(`/partido/${partidoId}/estado`).then(r => r.json()).then(renderEstado);
+    }
+  });
 
-  // AudioContext persistente para mobile (iOS/Android bloquea audio sin gesto)
-  let _audioCtx = null;
-  function getAudioCtx() {
-    if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (_audioCtx.state === 'suspended') _audioCtx.resume();
-    return _audioCtx;
-  }
-  // Inicializar con el primer toque del usuario
-  document.addEventListener('touchstart', () => getAudioCtx(), { once: true });
-  document.addEventListener('click', () => getAudioCtx(), { once: true });
-
-  // Sonido de alarma: 3 beeps cortos (funciona en mobile)
+  // Sonido suave de alarma usando Web Audio API (no requiere archivo externo)
   function sonarAlarma() {
     try {
-      const ctx = getAudioCtx();
-      [0, 0.3, 0.6].forEach(delay => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.frequency.value = 880;
-        gain.gain.setValueAtTime(0, ctx.currentTime + delay);
-        gain.gain.linearRampToValueAtTime(0.2, ctx.currentTime + delay + 0.05);
-        gain.gain.linearRampToValueAtTime(0, ctx.currentTime + delay + 0.25);
-        osc.start(ctx.currentTime + delay);
-        osc.stop(ctx.currentTime + delay + 0.25);
-      });
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = 880;  // La (suave)
+      gain.gain.setValueAtTime(0, ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.15, ctx.currentTime + 0.05);
+      gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.5);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.5);
     } catch (err) {
-      console.log('Audio no disponible:', err);
+      // Si no hay AudioContext disponible, no pasa nada
+      console.log('Audio no disponible');
     }
   }
 
