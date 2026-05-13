@@ -1068,15 +1068,19 @@ if (liveApp) {
       textoTiempo = ' (pendientes)';
     }
 
-    const enAlarma = info.cancha_alineada_actual
-        && info.segundos_hasta_cambio !== null
-        && info.segundos_hasta_cambio <= 30
-        && info.segundos_hasta_cambio > 0
-        && data.cronometro_corriendo;
-    const icono = info.atrasado ? '⚠️' : (enAlarma ? '🔔' : '⚡');
+    // Alarma: momento de hacer cambios
+    // esMomento=true cuando: ya llegó el turno (segundos null/0) o faltan <=30s
+    const esMomento = (
+      info.segundos_hasta_cambio === null ||
+      info.segundos_hasta_cambio === 0 ||
+      (info.segundos_hasta_cambio !== undefined && info.segundos_hasta_cambio <= 30 && info.segundos_hasta_cambio > 0)
+    );
+    const enAlarma = esMomento && data.cronometro_corriendo;
+    const icono = esMomento ? '🔔' : '⚡';
     titulo.innerHTML = `${icono} Cambios para T${turnoObjetivo}${textoTiempo}`;
 
-    if (enAlarma) zona.classList.add('zona-cambios-alarma');
+    // Borde rojo cuando es momento de cambiar (aunque crono esté pausado)
+    if (esMomento) zona.classList.add('zona-cambios-alarma');
     else zona.classList.remove('zona-cambios-alarma');
 
     // Botón "Listo, los hice" ya no se usa
