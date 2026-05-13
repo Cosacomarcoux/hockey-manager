@@ -255,6 +255,9 @@
         <button type="button" id="btn-cambios-hechos" class="btn btn-success btn-sm" style="display: none;">
           ✓ Listo, los hice
         </button>
+        <button type="button" id="btn-saltar-cambio" class="btn btn-secondary btn-sm" style="display: none;">
+          ⏭ Saltar
+        </button>
       </div>
     </div>
     <div id="zona-cambios-lista"></div>
@@ -903,6 +906,7 @@ if (liveApp) {
   let ultimoTurnoProximo = null;
   let procesandoCambio = false;        // bloqueo: solo 1 cambio a la vez
   let ultimoHtmlZona = '';              // para evitar re-render innecesario
+  let turnosSaltados = new Set();       // turnos que el usuario decidió saltar
 
   // Empareja "salidas" con "entradas".
   function emparejarCambios(cambios) {
@@ -967,6 +971,14 @@ if (liveApp) {
     if (turnoObjetivo !== ultimoTurnoProximo) {
       ultimoTurnoProximo = turnoObjetivo;
       cambiosYaHechos.clear();
+    }
+
+    // Si este turno fue saltado por el usuario, ocultar la card
+    if (turnoObjetivo !== null && turnosSaltados.has(turnoObjetivo)) {
+      zona.style.display = 'none';
+      idsEnZonaCambios.clear();
+      ultimoHtmlZona = '';
+      return;
     }
 
     // Resetear alarma si cambió el turno actual
@@ -1040,6 +1052,9 @@ if (liveApp) {
 
     // El botón "Listo, los hice" solo aparece si estás atrasado
     btnHechos.style.display = info.atrasado ? 'inline-block' : 'none';
+    // El botón "Saltar" aparece siempre que haya cambios pendientes
+    const btnSaltar = document.getElementById('btn-saltar-cambio');
+    if (btnSaltar) btnSaltar.style.display = 'inline-block';
 
     // Disparar alarma de sonido si corresponde
     if (enAlarma && !alarmaSonada) {
@@ -1150,6 +1165,15 @@ if (liveApp) {
     if (e.target && e.target.id === 'btn-cambios-hechos') {
       cambiosYaHechos.clear();
       fetch(`/partido/${partidoId}/estado`).then(r => r.json()).then(renderEstado);
+    }
+    // Botón "Saltar": registra este turno como saltado y oculta la card
+    if (e.target && e.target.id === 'btn-saltar-cambio') {
+      if (ultimoTurnoProximo !== null) {
+        turnosSaltados.add(ultimoTurnoProximo);
+      }
+      const zona = document.getElementById('zona-cambios-rapidos');
+      if (zona) zona.style.display = 'none';
+      ultimoHtmlZona = '';
     }
   });
 
