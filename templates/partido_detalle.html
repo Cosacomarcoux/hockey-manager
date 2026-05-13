@@ -959,7 +959,13 @@ if (liveApp) {
     const btnHechos = document.getElementById('btn-cambios-hechos');
 
     if (!info || !info.tiene_plan) {
-      zona.style.display = 'none';
+      // No hay plan: mantener card visible con mensaje
+      zona.style.display = 'block';
+      titulo.innerHTML = '📋 Sin plan de rotación';
+      const btnS = document.getElementById('btn-saltar-cambio');
+      if (btnS) btnS.style.display = 'none';
+      btnHechos.style.display = 'none';
+      lista.innerHTML = '<div class="swap-sin-cambios">No hay plan de rotación configurado.</div>';
       idsEnZonaCambios.clear();
       ultimoHtmlZona = '';
       return;
@@ -973,9 +979,14 @@ if (liveApp) {
       cambiosYaHechos.clear();
     }
 
-    // Si este turno fue saltado por el usuario, ocultar la card
+    // Si este turno fue saltado por el usuario, mostrar mensaje
     if (turnoObjetivo !== null && turnosSaltados.has(turnoObjetivo)) {
-      zona.style.display = 'none';
+      zona.style.display = 'block';
+      titulo.innerHTML = '⏭ T' + turnoObjetivo + ' saltado';
+      const btnS = document.getElementById('btn-saltar-cambio');
+      if (btnS) btnS.style.display = 'none';
+      btnHechos.style.display = 'none';
+      lista.innerHTML = '<div class="swap-sin-cambios">Saltaste este turno.</div>';
       idsEnZonaCambios.clear();
       ultimoHtmlZona = '';
       return;
@@ -989,16 +1000,28 @@ if (liveApp) {
 
     // Si no hay cambios planificados → ocultar
     if (!info.cambios_proximos || info.cambios_proximos.length === 0) {
-      zona.style.display = 'none';
+      zona.style.display = 'block';
+      titulo.innerHTML = '✅ T' + (turnoObjetivo || info.turno_actual || 1) + ' — Sin cambios pendientes';
+      const btnS = document.getElementById('btn-saltar-cambio');
+      if (btnS) btnS.style.display = 'none';
+      btnHechos.style.display = 'none';
+      lista.innerHTML = '<div class="swap-sin-cambios">Todo en orden por ahora.</div>';
+      zona.classList.remove('zona-cambios-alarma');
       idsEnZonaCambios.clear();
       ultimoHtmlZona = '';
       return;
     }
 
     // Si ya estoy alineado con el target Y hay próximo en otro cuarto (descanso)
-    // → ocultar (no hay nada que hacer)
     if (info.cancha_alineada && (!info.turno_proximo || !info.proximo_en_mismo_cuarto)) {
-      zona.style.display = 'none';
+      zona.style.display = 'block';
+      const cQ = info.cuarto || 1;
+      titulo.innerHTML = '✅ Cuarto ' + cQ + ' completo — Esperando próximo cuarto';
+      const btnS = document.getElementById('btn-saltar-cambio');
+      if (btnS) btnS.style.display = 'none';
+      btnHechos.style.display = 'none';
+      lista.innerHTML = '<div class="swap-sin-cambios">Sin cambios planificados en este cuarto. ¡Buen descanso!</div>';
+      zona.classList.remove('zona-cambios-alarma');
       idsEnZonaCambios.clear();
       ultimoHtmlZona = '';
       return;
@@ -1011,9 +1034,15 @@ if (liveApp) {
     // Solo los renderizamos directamente.
     const cambiosPendientes = info.cambios_proximos;
 
-    // Si no quedan cambios pendientes (raro pero posible), ocultar
+    // Si no quedan cambios pendientes
     if (cambiosPendientes.length === 0) {
-      zona.style.display = 'none';
+      zona.style.display = 'block';
+      titulo.innerHTML = '✅ T' + (turnoObjetivo || info.turno_actual || 1) + ' — Sin cambios pendientes';
+      const btnS = document.getElementById('btn-saltar-cambio');
+      if (btnS) btnS.style.display = 'none';
+      btnHechos.style.display = 'none';
+      lista.innerHTML = '<div class="swap-sin-cambios">Todo en orden por ahora.</div>';
+      zona.classList.remove('zona-cambios-alarma');
       return;
     }
 
