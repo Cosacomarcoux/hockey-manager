@@ -255,6 +255,9 @@
         <button type="button" id="btn-cambios-hechos" class="btn btn-success btn-sm" style="display: none;">
           ✓ Listo, los hice
         </button>
+        <button type="button" id="btn-saltar-cambio" class="btn btn-secondary btn-sm" style="display: none;">
+          ⏭ Saltar
+        </button>
       </div>
     </div>
     <div id="zona-cambios-lista"></div>
@@ -890,16 +893,20 @@ if (liveApp) {
   // ============================================================
   // PLAN EN VIVO: zona de cambios
   // ============================================================
-  let alarmaSonada = false;       // para evitar repetir el sonido
-  let ultimoTurnoAlarma = null;   // para resetear cuando cambia el turno
-
-  // ============================================================
-  // PLAN EN VIVO: zona de cambios
-  // ============================================================
   let alarmaSonada = false;
   let ultimoTurnoAlarma = null;
   let ultimoHtmlZona = '';
   let procesandoCambio = false;
+  let idsEnZonaCambios = new Set();
+
+  // Lista congelada de cambios mientras el usuario los hace
+  // Se congela cuando aparece el turno, se limpia cuando:
+  // a) El usuario hizo todos los cambios (lista vacía)
+  // b) El usuario tocó Saltar
+  // c) Cambió el turno objetivo
+  let cambiosPendientesCongelados = null;
+  let turnoCongelado = null;
+  let ultimoTurnoProximo = null;
 
   function colorPosicion(pos) {
     const map = {
@@ -938,94 +945,126 @@ if (liveApp) {
     const zona = document.getElementById('zona-cambios-rapidos');
     const lista = document.getElementById('zona-cambios-lista');
     const titulo = document.getElementById('zona-cambios-titulo');
+    const btnSaltar = document.getElementById('btn-saltar-cambio');
+    const btnHechos = document.getElementById('btn-cambios-hechos');
 
-    // Si no hay plan, ocultar
+    // Sin plan → ocultar
     if (!info || !info.tiene_plan) {
       zona.style.display = 'none';
       idsEnZonaCambios = new Set();
       return;
     }
 
-    // SIEMPRE mostrar la card si hay plan
+    // SIEMPRE mostrar si hay plan
     zona.style.display = 'block';
+    if (btnHechos) btnHechos.style.display = 'none';
 
-    // Configurar links al planificador
+    // Links al planificador
     const urlPlan = `/partido/${partidoId}/planificador`;
     const linkTitulo = document.getElementById('zona-cambios-link');
     const linkVerPlan = document.getElementById('zona-cambios-ver-plan');
     if (linkTitulo) linkTitulo.href = urlPlan;
     if (linkVerPlan) linkVerPlan.href = urlPlan;
 
-    // Ocultar botones que ya no usamos
-    const btnHechos = document.getElementById('btn-cambios-hechos');
-    const btnSaltar = document.getElementById('btn-saltar-cambio');
-    if (btnHechos) btnHechos.style.display = 'none';
-    if (btnSaltar) btnSaltar.style.display = 'none';
-
     const turnoObjetivo = info.turno_objetivo || info.turno_proximo || info.turno_actual;
-    const cambios = info.cambios_proximos || [];
 
-    // Resetear alarma cuando cambia el turno objetivo
+    // Si cambió el turno objetivo, limpiar congelado
+    if (turnoObjetivo !== ultimoTurnoProximo) {
+      ultimoTurnoProximo = turnoObjetivo;
+      cambiosPendientesCongelados = null;
+      turnoCongelado = null;
+    }
+
+    // Resetear alarma cuando cambia el turno (por cuarto + número)
     const turnoKey = (info.cuarto || data.cuarto_actual || 1) + '_' + turnoObjetivo;
     if (turnoKey !== ultimoTurnoAlarma) {
       ultimoTurnoAlarma = turnoKey;
       alarmaSonada = false;
     }
 
-    // Poblar set de IDs en zona de cambios (para atenuar en lista de jugadoras)
-    idsEnZonaCambios = new Set(cambios.map(c => c.jugadora_id));
+    // Si ya estamos alineados → sin cambios pendientes
+    const cambiosServer = info.cambios_proximos || [];
 
-    // Título con turno actual
-    if (cambios.length > 0) {
-      // Es momento de cambiar si segundos_hasta_cambio es null (ya llegó) o <= 30
-      const esMomento = (
-        info.segundos_hasta_cambio === null ||
-        info.segundos_hasta_cambio === 0 ||
-        (info.segundos_hasta_cambio !== undefined && info.segundos_hasta_cambio > 0 && info.segundos_hasta_cambio <= 30)
-      );
-
-      let textoTiempo = '';
-      if (!esMomento && info.segundos_hasta_cambio > 0) {
-        const m = Math.floor(info.segundos_hasta_cambio / 60);
-        const s = info.segundos_hasta_cambio % 60;
-        textoTiempo = m > 0 ? ` (en ${m}m ${String(s).padStart(2,'0')}s)` : ` (en ${s}s)`;
-      } else if (esMomento) {
-        textoTiempo = ' ← ¡Ahora!';
-      }
-
-      titulo.innerHTML = `${esMomento ? '🔔' : '⚡'} Cambios T${turnoObjetivo}${textoTiempo}`;
-
-      if (esMomento) zona.classList.add('zona-cambios-alarma');
-      else zona.classList.remove('zona-cambios-alarma');
-
-      // Sonar alarma si corresponde
-      if (esMomento && data.cronometro_corriendo && !alarmaSonada) {
-        sonarAlarma();
-        alarmaSonada = true;
-      }
-    } else {
-      // Sin cambios pendientes: mostrar el plan del turno actual como referencia
+    if (cambiosServer.length === 0 || info.cancha_alineada) {
+      // Limpiar congelado si ya no hay nada
+      cambiosPendientesCongelados = null;
+      turnoCongelado = null;
+      idsEnZonaCambios = new Set();
       titulo.innerHTML = `✅ T${info.turno_actual || 1} — Sin cambios pendientes`;
       zona.classList.remove('zona-cambios-alarma');
-      idsEnZonaCambios = new Set();
+      if (btnSaltar) btnSaltar.style.display = 'none';
+      lista.innerHTML = '';
+      ultimoHtmlZona = '';
+      return;
     }
 
-    // Renderizar pares de cambios
-    const pares = emparejarCambios(cambios);
+    // === SISTEMA DE CONGELADO ===
+    // Cuando aparecen cambios nuevos para un turno, congelar la lista
+    // para que al hacer 1 de 3 cambios los otros 2 sigan visibles
+    if (cambiosPendientesCongelados === null) {
+      // Primera vez que vemos estos cambios → congelar
+      cambiosPendientesCongelados = [...cambiosServer];
+      turnoCongelado = turnoObjetivo;
+    }
+    // Sincronizar: sacar de la lista congelada los cambios que el server dice que ya se hicieron
+    // (jugadoras que ya no aparecen en cambios_proximos del server)
+    const idsServer = new Set(cambiosServer.map(c => c.jugadora_id));
+    cambiosPendientesCongelados = cambiosPendientesCongelados.filter(c => idsServer.has(c.jugadora_id));
+
+    // Si ya no quedan cambios congelados → limpiar y volver
+    if (cambiosPendientesCongelados.length === 0) {
+      cambiosPendientesCongelados = null;
+      turnoCongelado = null;
+      idsEnZonaCambios = new Set();
+      titulo.innerHTML = `✅ T${info.turno_actual || 1} — Sin cambios pendientes`;
+      zona.classList.remove('zona-cambios-alarma');
+      if (btnSaltar) btnSaltar.style.display = 'none';
+      lista.innerHTML = '';
+      ultimoHtmlZona = '';
+      return;
+    }
+
+    const cambiosMostrar = cambiosPendientesCongelados;
+    idsEnZonaCambios = new Set(cambiosMostrar.map(c => c.jugadora_id));
+
+    // Título y alarma
+    const esMomento = (
+      info.segundos_hasta_cambio === null ||
+      info.segundos_hasta_cambio === 0 ||
+      (info.segundos_hasta_cambio > 0 && info.segundos_hasta_cambio <= 30)
+    );
+
+    let textoTiempo = '';
+    if (!esMomento && info.segundos_hasta_cambio > 0) {
+      const m = Math.floor(info.segundos_hasta_cambio / 60);
+      const s = info.segundos_hasta_cambio % 60;
+      textoTiempo = m > 0 ? ` (en ${m}m ${String(s).padStart(2,'0')}s)` : ` (en ${s}s)`;
+    } else if (esMomento) {
+      textoTiempo = ' ← ¡Ahora!';
+    }
+
+    titulo.innerHTML = `${esMomento ? '🔔' : '⚡'} Cambios T${turnoObjetivo}${textoTiempo}`;
+
+    if (esMomento) zona.classList.add('zona-cambios-alarma');
+    else zona.classList.remove('zona-cambios-alarma');
+
+    if (esMomento && data.cronometro_corriendo && !alarmaSonada) {
+      sonarAlarma();
+      alarmaSonada = true;
+    }
+
+    // Botón Saltar: visible cuando hay cambios
+    if (btnSaltar) btnSaltar.style.display = 'inline-block';
+
+    // Renderizar pares
+    const pares = emparejarCambios(cambiosMostrar);
     let html = '';
-
-    if (pares.length === 0) {
-      // Mostrar quiénes están en cancha según el plan actual
-      html = '<div class="swap-sin-cambios">Sin cambios para este turno</div>';
-    } else {
-      for (const par of pares) {
-        let cardSale = '<div class="swap-card-empty">—</div>';
-        let cardEntra = '<div class="swap-card-empty">—</div>';
-
-        if (par.sale) {
-          const col = colorPosicion(par.sale.posicion);
-          cardSale = `
-            <div class="swap-card swap-card-sale">
+    for (const par of pares) {
+      let cardSale = '<div class="swap-card-empty">—</div>';
+      let cardEntra = '<div class="swap-card-empty">—</div>';
+      if (par.sale) {
+        const col = colorPosicion(par.sale.posicion);
+        cardSale = `<div class="swap-card swap-card-sale">
               <div class="swap-ini" style="background:${col};">${par.sale.iniciales}</div>
               <div class="swap-name-block">
                 <div class="swap-name">${par.sale.nombre} ${par.sale.apellido[0]}.</div>
@@ -1033,12 +1072,11 @@ if (liveApp) {
               </div>
               <span class="swap-badge swap-badge-sale">Sale</span>
             </div>`;
-        }
-        if (par.entra) {
-          const col = colorPosicion(par.entra.posicion);
-          const saleId = par.sale ? par.sale.jugadora_id : '';
-          cardEntra = `
-            <div class="swap-card swap-card-entra swap-card-clickable"
+      }
+      if (par.entra) {
+        const col = colorPosicion(par.entra.posicion);
+        const saleId = par.sale ? par.sale.jugadora_id : '';
+        cardEntra = `<div class="swap-card swap-card-entra swap-card-clickable"
                  data-entra-id="${par.entra.jugadora_id}"
                  data-sale-id="${saleId}">
               <div class="swap-ini" style="background:${col};">${par.entra.iniciales}</div>
@@ -1048,16 +1086,13 @@ if (liveApp) {
               </div>
               <span class="swap-badge swap-badge-entra">Tocar para hacer cambio</span>
             </div>`;
-        }
-
-        html += `<div class="swap-row">${cardSale}<div class="swap-arrow">⇄</div>${cardEntra}</div>`;
       }
+      html += `<div class="swap-row">${cardSale}<div class="swap-arrow">⇄</div>${cardEntra}</div>`;
     }
 
     if (html !== ultimoHtmlZona) {
       lista.innerHTML = html;
       ultimoHtmlZona = html;
-
       lista.querySelectorAll('.swap-card-clickable').forEach(c => {
         c.addEventListener('click', async () => {
           if (procesandoCambio) return;
@@ -1075,40 +1110,36 @@ if (liveApp) {
     }
   }
 
+  // Botón Saltar: descarta los cambios de este turno y pasa al siguiente
+  document.addEventListener('click', (e) => {
+    if (e.target && e.target.id === 'btn-saltar-cambio') {
+      cambiosPendientesCongelados = null;
+      turnoCongelado = null;
+      ultimoHtmlZona = '';
+      fetch(`/partido/${partidoId}/estado`).then(r => r.json()).then(renderEstado);
+    }
+  });
+
   // Ejecuta sale + entra en una sola acción
   async function ejecutarCambioCompleto(saleId, entraId) {
     try {
       if (saleId) {
-        const r1 = await fetch(`/partido/${partidoId}/jugadora/${saleId}/salir`, {
-          method: 'POST'
-        });
-        if (!r1.ok) {
-          alert('Error al sacar la jugadora');
-          return;
-        }
+        const r1 = await fetch(`/partido/${partidoId}/jugadora/${saleId}/salir`, { method: 'POST' });
+        if (!r1.ok) { alert('Error al sacar la jugadora'); return; }
       }
-      const r2 = await fetch(`/partido/${partidoId}/jugadora/${entraId}/entrar`, {
-        method: 'POST'
-      });
-      if (!r2.ok) {
-        alert('Error al meter la jugadora');
-        return;
-      }
+      const r2 = await fetch(`/partido/${partidoId}/jugadora/${entraId}/entrar`, { method: 'POST' });
+      if (!r2.ok) { alert('Error al meter la jugadora'); return; }
       const data = await r2.json();
-
-      // Sacar este par de la lista congelada (cambio hecho)
-      // Así los demás cambios pendientes siguen mostrándose
+      // Sacar este par de la lista congelada
       if (cambiosPendientesCongelados !== null) {
         cambiosPendientesCongelados = cambiosPendientesCongelados.filter(c =>
-          c.jugadora_id !== entraId && c.jugadora_id !== saleId
+          c.jugadora_id !== entraId && c.jugadora_id !== (saleId || -1)
         );
-        // Si ya no quedan cambios congelados, limpiar
         if (cambiosPendientesCongelados.length === 0) {
           cambiosPendientesCongelados = null;
           turnoCongelado = null;
         }
       }
-
       renderEstado(data);
     } catch (err) {
       alert('Error de conexión: ' + err.message);
