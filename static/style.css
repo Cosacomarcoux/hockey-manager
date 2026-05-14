@@ -3709,3 +3709,122 @@ input:focus, select:focus {
   font-size: 14px !important;
   font-weight: 600 !important;
 }
+
+
+/* ============================================================
+   NOTAS DE PARTIDO
+   ============================================================ */
+.notas-section {
+  margin: 24px 0;
+  padding: 20px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+.notas-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.notas-header h2 {
+  margin: 0;
+  font-size: 1.3rem;
+}
+.notas-subtitulo {
+  margin-top: 24px;
+  font-size: 1.1rem;
+  color: #555;
+}
+.form-nota {
+  background: #f8f9fb;
+  border: 1px solid #e1e4ec;
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.form-nota textarea {
+  width: 100%;
+  border: 1px solid #d4d8e0;
+  border-radius: 8px;
+  padding: 10px;
+  font-family: inherit;
+  font-size: 0.95rem;
+  resize: vertical;
+  box-sizing: border-box;
+  margin-bottom: 10px;
+}
+.form-nota input[type="text"] {
+  width: 100%;
+  border: 1px solid #d4d8e0;
+  border-radius: 8px;
+  padding: 10px;
+  font-family: inherit;
+  font-size: 0.9rem;
+  box-sizing: border-box;
+  margin-bottom: 10px;
+}
+.form-nota-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  align-items: center;
+}
+.nota-card {
+  background: #fafbfc;
+  border: 1px solid #e8ebf2;
+  border-left: 4px solid #534AB7;
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 10px;
+}
+.nota-card-rival {
+  border-left-color: #999;
+  background: #f5f5f7;
+}
+.nota-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 0.82rem;
+  color: #777;
+}
+.nota-fecha,
+.nota-fecha-rival {
+  font-weight: 500;
+}
+.nota-acciones {
+  display: flex;
+  gap: 10px;
+}
+.nota-texto {
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: #222;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+.nota-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.nota-chip {
+  background: #e9eafc;
+  color: #534AB7;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+.nota-card-rival .nota-chip {
+  background: #e8e8eb;
+  color: #555;
+}
+@media (max-width: 600px) {
+  .notas-section { padding: 14px; }
+  .notas-header h2 { font-size: 1.1rem; }
+  .nota-card { padding: 12px; }
+}
