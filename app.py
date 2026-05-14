@@ -534,6 +534,34 @@ def inject_equipo_actual():
     }
 
 
+class NotaPartido(db.Model):
+    """
+    Nota o comentario asociado a un partido o a un rival.
+    - Si partido_id está seteado: nota sobre ese partido específico (post-partido).
+    - Si partido_id es NULL: nota general sobre el rival (no atada a un partido).
+    El campo 'rival' siempre está, porque las notas se agrupan por rival.
+    """
+    id = db.Column(db.Integer, primary_key=True)
+    entrenador_id = db.Column(db.Integer, db.ForeignKey('entrenador.id'), nullable=False)
+    equipo_id = db.Column(db.Integer, db.ForeignKey('equipo.id'), nullable=True)
+    partido_id = db.Column(db.Integer, db.ForeignKey('partido.id'), nullable=True)
+    rival = db.Column(db.String(120), nullable=False)
+    texto = db.Column(db.Text, nullable=False)
+    etiquetas = db.Column(db.String(500))  # tags separadas por coma: "tactica,defensa,jug7"
+    creada = db.Column(db.DateTime, default=datetime.utcnow)
+    actualizada = db.Column(db.DateTime, default=datetime.utcnow)
+
+    entrenador = db.relationship('Entrenador')
+    partido = db.relationship('Partido', backref=db.backref('notas', lazy=True, cascade='all, delete-orphan'))
+
+    @property
+    def etiquetas_lista(self):
+        """Devuelve etiquetas como lista. Si está vacío, devuelve []."""
+        if not self.etiquetas:
+            return []
+        return [e.strip() for e in self.etiquetas.split(',') if e.strip()]
+
+
 # ============================================================
 # RUTAS DE AUTENTICACIÓN
 # ============================================================
