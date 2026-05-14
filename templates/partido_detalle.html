@@ -306,6 +306,36 @@
     </div>
   </div>
 
+  <!-- Notas del partido -->
+  <div class="notas-section">
+    <div class="notas-header">
+      <h2>📝 Notas</h2>
+      <button class="btn btn-secondary btn-sm" id="btn-mostrar-form-nota">+ Agregar nota</button>
+    </div>
+
+    <!-- Formulario de nueva nota -->
+    <div id="form-nota-nueva" class="form-nota" style="display: none;">
+      <textarea id="nota-texto-nueva" placeholder="Escribí tu nota sobre el partido, jugadoras, tácticas..." rows="4"></textarea>
+      <input type="text" id="nota-etiquetas-nueva" placeholder="Etiquetas (opcional): ej. tactica, defensa, jug7" />
+      <div class="form-nota-actions">
+        <button class="link-delete" id="btn-cancelar-nota">Cancelar</button>
+        <button class="btn btn-primary" id="btn-guardar-nota">Guardar nota</button>
+      </div>
+    </div>
+
+    <!-- Lista de notas del partido -->
+    <div id="notas-partido-lista">
+      <p class="muted small" id="notas-sin-mensaje" style="display: none;">Todavía no hay notas de este partido.</p>
+    </div>
+
+    <!-- Notas previas vs el mismo rival -->
+    <div id="notas-rival-zona" style="display: none;">
+      <h3 class="notas-subtitulo">📚 Notas previas vs {{ partido.rival }}</h3>
+      <p class="muted small">De partidos anteriores contra este rival.</p>
+      <div id="notas-rival-lista"></div>
+    </div>
+  </div>
+
   <!-- Línea de tiempo -->
   <div class="timeline-section">
     <h2>Eventos del partido</h2>
@@ -1395,6 +1425,183 @@ if (liveApp) {
       fetch(`/partido/${partidoId}/estado`).then(r => r.json()).then(renderEstado);
     }
   }, 1000);  // chequeo cada segundo, decide si hace fetch o no
+
+  // ============================================================
+  // NOTAS DEL PARTIDO
+  // ============================================================
+  let notasEditandoId = null;  // null = creando nueva, número = editando esa
+
+  async function cargarNotas() {
+    try {
+      const r = await fetch(`/partido/${partidoId}/notas`);
+      const data = await r.json();
+      if (!data.ok) return;
+      renderNotasPartido(data.notas_partido);
+      renderNotasRival(data.notas_rival_previas);
+    } catch (err) {
+      console.error('Error cargando notas:', err);
+    }
+  }
+
+  function formatoFecha(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return d.toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' }) +
+           ' ' + d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  }
+
+  function chipsHtml(etiquetas) {
+    if (!etiquetas || etiquetas.length === 0) return '';
+    return '<div class="nota-chips">' +
+      etiquetas.map(e => '<span class="nota-chip">' + escapeHtml(e) + '</span>').join('') +
+      '</div>';
+  }
+
+  function renderNotasPartido(notas) {
+    const lista = document.getElementById('notas-partido-lista');
+    const sinMsg = document.getElementById('notas-sin-mensaje');
+
+    if (!notas || notas.length === 0) {
+      lista.innerHTML = '';
+      if (sinMsg) {
+        sinMsg.style.display = 'block';
+        lista.appendChild(sinMsg);
+      }
+      return;
+    }
+    if (sinMsg) sinMsg.style.display = 'none';
+
+    lista.innerHTML = notas.map(n => `
+      <div class="nota-card" data-nota-id="${n.id}">
+        <div class="nota-meta">
+          <span class="nota-fecha">${formatoFecha(n.creada)}</span>
+          <div class="nota-acciones">
+            <button class="link-edit nota-btn-editar" data-nota-id="${n.id}">Editar</button>
+            <button class="link-delete nota-btn-borrar" data-nota-id="${n.id}">Borrar</button>
+          </div>
+        </div>
+        <div class="nota-texto">${escapeHtml(n.texto).replace(/\n/g, '<br>')}</div>
+        ${chipsHtml(n.etiquetas)}
+      </div>
+    `).join('');
+
+    lista.querySelectorAll('.nota-btn-editar').forEach(b => {
+      b.addEventListener('click', e => abrirEditarNota(parseInt(e.target.dataset.notaId), notas));
+    });
+    lista.querySelectorAll('.nota-btn-borrar').forEach(b => {
+      b.addEventListener('click', e => borrarNota(parseInt(e.target.dataset.notaId)));
+    });
+  }
+
+  function renderNotasRival(notas) {
+    const zona = document.getElementById('notas-rival-zona');
+    const lista = document.getElementById('notas-rival-lista');
+    if (!notas || notas.length === 0) {
+      zona.style.display = 'none';
+      return;
+    }
+    zona.style.display = 'block';
+    lista.innerHTML = notas.map(n => {
+      const fechaPartido = n.partido_fecha ? new Date(n.partido_fecha).toLocaleDateString('es-AR', {day:'2-digit', month:'short', year:'numeric'}) : 'Nota general';
+      return `
+        <div class="nota-card nota-card-rival">
+          <div class="nota-meta">
+            <span class="nota-fecha-rival">📅 ${fechaPartido}</span>
+          </div>
+          <div class="nota-texto">${escapeHtml(n.texto).replace(/\n/g, '<br>')}</div>
+          ${chipsHtml(n.etiquetas)}
+        </div>
+      `;
+    }).join('');
+  }
+
+  function abrirFormNuevaNota() {
+    notasEditandoId = null;
+    document.getElementById('nota-texto-nueva').value = '';
+    document.getElementById('nota-etiquetas-nueva').value = '';
+    document.getElementById('form-nota-nueva').style.display = 'block';
+    document.getElementById('btn-guardar-nota').textContent = 'Guardar nota';
+    document.getElementById('nota-texto-nueva').focus();
+  }
+
+  function abrirEditarNota(notaId, notasArr) {
+    const nota = notasArr.find(n => n.id === notaId);
+    if (!nota) return;
+    notasEditandoId = notaId;
+    document.getElementById('nota-texto-nueva').value = nota.texto;
+    document.getElementById('nota-etiquetas-nueva').value = (nota.etiquetas || []).join(', ');
+    document.getElementById('form-nota-nueva').style.display = 'block';
+    document.getElementById('btn-guardar-nota').textContent = 'Guardar cambios';
+    document.getElementById('nota-texto-nueva').focus();
+    document.getElementById('form-nota-nueva').scrollIntoView({behavior: 'smooth', block: 'center'});
+  }
+
+  function cerrarFormNota() {
+    document.getElementById('form-nota-nueva').style.display = 'none';
+    notasEditandoId = null;
+  }
+
+  async function guardarNota() {
+    const texto = document.getElementById('nota-texto-nueva').value.trim();
+    const etiquetas = document.getElementById('nota-etiquetas-nueva').value.trim();
+    if (!texto) {
+      alert('Escribí algo en la nota');
+      return;
+    }
+    try {
+      let url;
+      if (notasEditandoId === null) {
+        url = `/partido/${partidoId}/nota/nueva`;
+      } else {
+        url = `/nota/${notasEditandoId}/editar`;
+      }
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({texto, etiquetas})
+      });
+      const data = await r.json();
+      if (!data.ok) {
+        alert(data.error || 'Error al guardar');
+        return;
+      }
+      cerrarFormNota();
+      cargarNotas();
+    } catch (err) {
+      alert('Error de conexión: ' + err.message);
+    }
+  }
+
+  async function borrarNota(notaId) {
+    if (!confirm('¿Borrar esta nota? No se puede deshacer.')) return;
+    try {
+      const r = await fetch(`/nota/${notaId}/borrar`, { method: 'POST' });
+      const data = await r.json();
+      if (!data.ok) {
+        alert('Error al borrar');
+        return;
+      }
+      cargarNotas();
+    } catch (err) {
+      alert('Error de conexión: ' + err.message);
+    }
+  }
+
+  // Listeners
+  const btnMostrarForm = document.getElementById('btn-mostrar-form-nota');
+  if (btnMostrarForm) btnMostrarForm.addEventListener('click', abrirFormNuevaNota);
+  const btnCancelarNota = document.getElementById('btn-cancelar-nota');
+  if (btnCancelarNota) btnCancelarNota.addEventListener('click', cerrarFormNota);
+  const btnGuardarNota = document.getElementById('btn-guardar-nota');
+  if (btnGuardarNota) btnGuardarNota.addEventListener('click', guardarNota);
+
+  // Cargar notas al iniciar
+  cargarNotas();
 }
 </script>
 {% endblock %}
