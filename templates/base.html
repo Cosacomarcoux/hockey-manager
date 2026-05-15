@@ -17,6 +17,7 @@
         <a href="{{ url_for('partidos') }}" class="{% if request.endpoint and 'partido' in request.endpoint %}active{% endif %}">Partidos</a>
         <a href="{{ url_for('estadisticas') }}" class="{% if request.endpoint and 'estadistica' in request.endpoint %}active{% endif %}">Estadísticas</a>
         <a href="{{ url_for('historial') }}" class="{% if request.endpoint == 'historial' %}active{% endif %}">Historial</a>
+        <a href="{{ url_for('notas_lista') }}" class="{% if request.endpoint and 'nota' in request.endpoint %}active{% endif %}">Notas</a>
       </div>
       <div class="nav-user">
         {% if eq_actual %}
