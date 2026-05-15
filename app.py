@@ -552,7 +552,7 @@ class NotaPartido(db.Model):
     actualizada = db.Column(db.DateTime, default=datetime.utcnow)
 
     entrenador = db.relationship('Entrenador')
-    partido = db.relationship('Partido', backref=db.backref('notas', lazy=True, cascade='all, delete-orphan'))
+    partido = db.relationship('Partido', backref=db.backref('comentarios_post_partido', lazy=True, cascade='all, delete-orphan'))
 
     @property
     def etiquetas_lista(self):
@@ -2789,6 +2789,127 @@ def bloque_eliminar(partido_id, bloque_id):
     db.session.commit()
     flash('Bloque eliminado', 'success')
     return redirect(url_for('bloques_lista', partido_id=partido.id))
+
+
+# ============================================================
+# RUTAS DE NOTAS DE PARTIDO
+# ============================================================
+@app.route('/partido/<int:partido_id>/notas')
+@login_requerido
+def partido_notas_listar(partido_id):
+    """Lista todas las notas de este partido + notas previas contra el mismo rival."""
+    entrenador = entrenador_actual()
+    partido = Partido.query.filter_by(id=partido_id, entrenador_id=entrenador.id).first_or_404()
+
+    notas_partido = NotaPartido.query.filter_by(
+        partido_id=partido.id,
+        entrenador_id=entrenador.id,
+    ).order_by(NotaPartido.creada.desc()).all()
+
+    notas_rival = NotaPartido.query.filter(
+        NotaPartido.entrenador_id == entrenador.id,
+        NotaPartido.rival == partido.rival,
+        NotaPartido.partido_id != partido.id
+    ).order_by(NotaPartido.creada.desc()).limit(20).all()
+
+    def serializar(n):
+        return {
+            'id': n.id,
+            'rival': n.rival,
+            'partido_id': n.partido_id,
+            'texto': n.texto,
+            'etiquetas': n.etiquetas_lista,
+            'creada': n.creada.isoformat() if n.creada else None,
+            'actualizada': n.actualizada.isoformat() if n.actualizada else None,
+            'partido_fecha': n.partido.fecha.isoformat() if n.partido else None,
+        }
+
+    return jsonify({
+        'ok': True,
+        'notas_partido': [serializar(n) for n in notas_partido],
+        'notas_rival_previas': [serializar(n) for n in notas_rival],
+    })
+
+
+@app.route('/partido/<int:partido_id>/nota/nueva', methods=['POST'])
+@login_requerido
+def partido_nota_nueva(partido_id):
+    """Crea una nueva nota para este partido."""
+    entrenador = entrenador_actual()
+    eq_actual = equipo_actual()
+    partido = Partido.query.filter_by(id=partido_id, entrenador_id=entrenador.id).first_or_404()
+
+    data = request.get_json() or {}
+    texto = (data.get('texto') or '').strip()
+    etiquetas = (data.get('etiquetas') or '').strip()
+
+    if not texto:
+        return jsonify({'ok': False, 'error': 'La nota no puede estar vacía'}), 400
+
+    nota = NotaPartido(
+        entrenador_id=entrenador.id,
+        equipo_id=eq_actual.id if eq_actual else None,
+        partido_id=partido.id,
+        rival=partido.rival,
+        texto=texto,
+        etiquetas=etiquetas if etiquetas else None,
+    )
+    db.session.add(nota)
+    db.session.commit()
+
+    return jsonify({
+        'ok': True,
+        'nota': {
+            'id': nota.id,
+            'rival': nota.rival,
+            'partido_id': nota.partido_id,
+            'texto': nota.texto,
+            'etiquetas': nota.etiquetas_lista,
+            'creada': nota.creada.isoformat(),
+            'actualizada': nota.actualizada.isoformat(),
+        }
+    })
+
+
+@app.route('/nota/<int:nota_id>/editar', methods=['POST'])
+@login_requerido
+def nota_editar(nota_id):
+    """Edita una nota existente."""
+    entrenador = entrenador_actual()
+    nota = NotaPartido.query.filter_by(id=nota_id, entrenador_id=entrenador.id).first_or_404()
+
+    data = request.get_json() or {}
+    texto = (data.get('texto') or '').strip()
+    etiquetas = (data.get('etiquetas') or '').strip()
+
+    if not texto:
+        return jsonify({'ok': False, 'error': 'La nota no puede estar vacía'}), 400
+
+    nota.texto = texto
+    nota.etiquetas = etiquetas if etiquetas else None
+    nota.actualizada = datetime.utcnow()
+    db.session.commit()
+
+    return jsonify({
+        'ok': True,
+        'nota': {
+            'id': nota.id,
+            'texto': nota.texto,
+            'etiquetas': nota.etiquetas_lista,
+            'actualizada': nota.actualizada.isoformat(),
+        }
+    })
+
+
+@app.route('/nota/<int:nota_id>/borrar', methods=['POST'])
+@login_requerido
+def nota_borrar(nota_id):
+    """Borra una nota."""
+    entrenador = entrenador_actual()
+    nota = NotaPartido.query.filter_by(id=nota_id, entrenador_id=entrenador.id).first_or_404()
+    db.session.delete(nota)
+    db.session.commit()
+    return jsonify({'ok': True})
 
 
 # ============================================================
