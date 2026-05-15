@@ -317,11 +317,23 @@
   </div>
 
   {% if partido.estado == 'en_curso' %}
+  <!-- Modal: ¿Querés escribir una nota post-partido? -->
+  <div id="modal-nota-partido" style="display:none;" class="post-partido-modal-overlay">
+    <div class="post-partido-modal">
+      <h3>📝 ¿Querés dejar una nota?</h3>
+      <p>¿Anotás algo sobre el partido vs <strong>{{ partido.rival }}</strong>?</p>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="btn-nota-no">No, gracias</button>
+        <a href="{{ url_for('notas_lista', nuevo_para_rival=partido.rival) }}" class="btn btn-primary">Sí, escribir nota</a>
+      </div>
+    </div>
+  </div>
+
   <div class="match-end-section">
     <form method="POST" action="{{ url_for('partido_finalizar', partido_id=partido.id) }}"
-          onsubmit="return confirm('¿Finalizar el partido? Después podés reanudarlo si necesitás.')"
+          id="form-finalizar-partido"
           style="display: inline-block;">
-      <button type="submit" class="btn btn-secondary">🏁 Finalizar partido</button>
+      <button type="button" class="btn btn-secondary" id="btn-finalizar-partido">🏁 Finalizar partido</button>
     </form>
     <form method="POST" action="{{ url_for('partido_eliminar', partido_id=partido.id) }}"
           onsubmit="return confirm('¿Eliminar el partido vs {{ partido.rival }}? Se borrarán todos los eventos, convocatorias y estadísticas. Esta acción no se puede deshacer.')"
@@ -1395,6 +1407,39 @@ if (liveApp) {
       fetch(`/partido/${partidoId}/estado`).then(r => r.json()).then(renderEstado);
     }
   }, 1000);  // chequeo cada segundo, decide si hace fetch o no
+
+  // === MODAL POST-PARTIDO ===
+  const btnFinalizar = document.getElementById('btn-finalizar-partido');
+  const modalNota = document.getElementById('modal-nota-partido');
+  const btnNotaNo = document.getElementById('btn-nota-no');
+
+  if (btnFinalizar && modalNota) {
+    // Al tocar "Finalizar partido": confirmar y mostrar modal
+    btnFinalizar.addEventListener('click', () => {
+      if (!confirm('¿Finalizar el partido? Después podés reanudarlo si necesitás.')) return;
+      // Primero finalizar el partido (submit del form)
+      const form = document.getElementById('form-finalizar-partido');
+      // Cambiar el form para que no recargue, sino que mostremos el modal después
+      // Usamos fetch para finalizar y después mostramos el modal
+      fetch(form.action, { method: 'POST' })
+        .then(() => {
+          // Partido finalizado, ahora mostrar el modal de nota
+          modalNota.style.display = 'flex';
+        })
+        .catch(() => {
+          // Si falla el fetch, hacer submit normal
+          form.submit();
+        });
+    });
+
+    // "No gracias" → cerrar modal y recargar página
+    if (btnNotaNo) {
+      btnNotaNo.addEventListener('click', () => {
+        modalNota.style.display = 'none';
+        window.location.reload();
+      });
+    }
+  }
 }
 </script>
 {% endblock %}
