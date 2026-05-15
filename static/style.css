@@ -3906,3 +3906,235 @@ input:focus, select:focus {
   .nota-card { padding: 14px; }
   .form-nota-card { padding: 16px; }
 }
+
+
+/* ============================================================
+   OPTIMIZACIÓN MOBILE (375px - 600px)
+   ============================================================ */
+
+/* ── Navegación ── */
+@media (max-width: 600px) {
+  .nav-container {
+    padding: 0 12px;
+  }
+  .nav-links {
+    gap: 2px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+  }
+  .nav-links::-webkit-scrollbar { display: none; }
+  .nav-links a {
+    font-size: 0.78rem;
+    padding: 6px 10px;
+    white-space: nowrap;
+  }
+  .nav-brand { font-size: 1rem; }
+  .nav-user-name { display: none; }
+
+  /* ── Page header ── */
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .page-header h1 { font-size: 1.4rem; }
+
+  /* ── Marcador / Scoreboard ── */
+  .scoreboard {
+    gap: 8px;
+    padding: 12px 10px;
+  }
+  .score-value { font-size: 2.8rem; }
+  .score-team { font-size: 0.78rem; }
+  .clock-time { font-size: 2rem; }
+  .clock-cuarto { font-size: 1rem; }
+  .clock-btn { width: 36px; height: 36px; font-size: 1rem; }
+  .clock-btn-play { width: 44px; height: 44px; font-size: 1.2rem; }
+  .score-btn { width: 36px; height: 36px; font-size: 1.3rem; }
+  .score-btn-minus { width: 36px; height: 36px; font-size: 1.3rem; }
+  .clock-ajuste {
+    gap: 4px;
+    margin-top: 6px;
+  }
+  .clock-ajuste-btn {
+    font-size: 0.75rem;
+    padding: 5px 8px;
+  }
+
+  /* ── Stats panel: scroll horizontal ── */
+  .stats-panel-v2 {
+    flex-direction: column;
+    gap: 12px;
+  }
+  .stats-side {
+    width: 100%;
+  }
+  .stats-table {
+    font-size: 0.78rem;
+  }
+  .stats-th-label { max-width: 80px; }
+  .stats-add-btn {
+    min-width: 32px;
+    min-height: 32px;
+    font-size: 1rem;
+  }
+
+  /* ── Card de cambios ── */
+  .zona-cambios-card {
+    padding: 12px;
+  }
+  .zona-cambios-head {
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-start;
+  }
+  .swap-row {
+    flex-direction: column;
+    gap: 8px;
+    align-items: stretch;
+  }
+  .swap-arrow {
+    text-align: center;
+    transform: rotate(90deg);
+    font-size: 1.2rem;
+    margin: 0;
+  }
+  .swap-card {
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .swap-card-empty {
+    display: none;
+  }
+  .swap-badge {
+    font-size: 0.72rem;
+    padding: 3px 8px;
+  }
+  .swap-name { font-size: 0.88rem; }
+  .swap-pos { font-size: 0.72rem; }
+  .swap-ini { width: 36px; height: 36px; font-size: 0.85rem; }
+
+  /* ── Jugadoras ── */
+  .players-section { padding: 12px; }
+  .player-item {
+    padding: 10px 12px;
+    gap: 10px;
+  }
+  .player-name { font-size: 0.88rem; }
+  .player-time-label { font-size: 0.75rem; }
+  .player-action {
+    min-width: 56px;
+    min-height: 36px;
+    font-size: 0.82rem;
+    padding: 6px 10px;
+  }
+  .btn-no-disp-trigger {
+    min-width: 36px;
+    min-height: 36px;
+  }
+  .players-tab {
+    font-size: 0.82rem;
+    padding: 6px 12px;
+  }
+
+  /* ── Rotación live ── */
+  .rotacion-live-table { overflow-x: auto; }
+  .rotacion-table { font-size: 0.8rem; min-width: 280px; }
+
+  /* ── Timeline ── */
+  .timeline-item {
+    font-size: 0.82rem;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .timeline-time { font-size: 0.75rem; white-space: nowrap; }
+
+  /* ── Match end ── */
+  .match-end-section {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  /* ── Modal no-disponible ── */
+  .modal-card-wide {
+    max-width: 100%;
+    margin: 12px;
+  }
+  .no-disp-candidatas {
+    max-height: 200px;
+    overflow-y: auto;
+  }
+
+  /* ── Plantel ── */
+  .player-item .player-name-block {
+    flex: 1;
+    min-width: 0;
+  }
+
+  /* ── Botones generales más grandes en mobile ── */
+  .btn {
+    min-height: 42px;
+    font-size: 0.9rem;
+  }
+  .btn-sm {
+    min-height: 34px;
+    font-size: 0.82rem;
+  }
+
+  /* ── Formularios ── */
+  .form-row input[type="text"],
+  .form-row select,
+  .form-row textarea {
+    font-size: 16px; /* evita zoom automático en iOS */
+  }
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  select,
+  textarea {
+    font-size: 16px !important; /* evita zoom en iOS */
+  }
+
+  /* ── Notas mobile ── */
+  .nota-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .filtro-chips { gap: 6px; }
+  .filtro-chip { font-size: 0.8rem; padding: 5px 10px; }
+
+  /* ── Post-partido modal ── */
+  .post-partido-modal {
+    padding: 20px 16px;
+  }
+  .post-partido-modal h3 { font-size: 1.1rem; }
+  .post-partido-modal .modal-actions {
+    flex-direction: column;
+    gap: 10px;
+  }
+  .post-partido-modal .modal-actions .btn {
+    width: 100%;
+    text-align: center;
+  }
+
+  /* ── Finalizado banner ── */
+  .finalizado-banner {
+    font-size: 0.9rem;
+    padding: 10px 14px;
+    flex-direction: column;
+    gap: 8px;
+    text-align: center;
+  }
+}
+
+/* ── Pantallas muy chicas (iPhone SE, 375px) ── */
+@media (max-width: 390px) {
+  .scoreboard { padding: 10px 6px; }
+  .score-value { font-size: 2.4rem; }
+  .clock-time { font-size: 1.8rem; }
+  .nav-links a { font-size: 0.72rem; padding: 6px 7px; }
+}
