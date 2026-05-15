@@ -2802,21 +2802,25 @@ def notas_lista():
     rival_filtro = request.args.get('rival', '').strip()
     rival_nuevo = request.args.get('nuevo_para_rival', '').strip()
 
-    # Notas del entrenador (todas, sin filtrar por equipo por ahora)
-    query = NotaPartido.query.filter_by(entrenador_id=entrenador.id)
+    try:
+        notas = NotaPartido.query.filter_by(entrenador_id=entrenador.id).order_by(NotaPartido.creada.desc()).all()
+    except Exception:
+        notas = []
+
+    try:
+        rivales_con_notas = sorted(set(n.rival for n in notas if n.rival))
+    except Exception:
+        rivales_con_notas = []
+
+    try:
+        partidos = Partido.query.filter_by(entrenador_id=entrenador.id).all()
+        rivales_partidos = sorted(set(p.rival for p in partidos if p.rival))
+    except Exception:
+        rivales_partidos = []
+
     if rival_filtro:
-        query = query.filter(NotaPartido.rival == rival_filtro)
-    notas = query.order_by(NotaPartido.creada.desc()).all()
+        notas = [n for n in notas if n.rival == rival_filtro]
 
-    # Lista de rivales únicos en las notas (para los chips de filtro)
-    todas_notas = NotaPartido.query.filter_by(entrenador_id=entrenador.id).all()
-    rivales_con_notas = sorted(set(n.rival for n in todas_notas if n.rival))
-
-    # Lista de rivales de partidos pasados (para el dropdown al crear)
-    partidos = Partido.query.filter_by(entrenador_id=entrenador.id).all()
-    rivales_partidos = sorted(set(p.rival for p in partidos if p.rival))
-
-    # Unir ambas listas
     rivales_todos = sorted(set(rivales_con_notas + rivales_partidos))
 
     return render_template(
