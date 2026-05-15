@@ -2825,6 +2825,7 @@ def notas_lista():
 
     return render_template(
         'notas_lista.html',
+        entrenador=entrenador,
         notas=notas,
         rivales_con_notas=rivales_con_notas,
         rivales_todos=rivales_todos,
