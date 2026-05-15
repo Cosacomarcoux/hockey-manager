@@ -2792,83 +2792,87 @@ def bloque_eliminar(partido_id, bloque_id):
 
 
 # ============================================================
-# RUTAS DE NOTAS DE PARTIDO
+# RUTAS DE NOTAS
 # ============================================================
-@app.route('/partido/<int:partido_id>/notas')
+@app.route('/notas')
 @login_requerido
-def partido_notas_listar(partido_id):
-    """Lista todas las notas de este partido + notas previas contra el mismo rival."""
-    entrenador = entrenador_actual()
-    partido = Partido.query.filter_by(id=partido_id, entrenador_id=entrenador.id).first_or_404()
-
-    notas_partido = NotaPartido.query.filter_by(
-        partido_id=partido.id,
-        entrenador_id=entrenador.id,
-    ).order_by(NotaPartido.creada.desc()).all()
-
-    notas_rival = NotaPartido.query.filter(
-        NotaPartido.entrenador_id == entrenador.id,
-        NotaPartido.rival == partido.rival,
-        NotaPartido.partido_id != partido.id
-    ).order_by(NotaPartido.creada.desc()).limit(20).all()
-
-    def serializar(n):
-        return {
-            'id': n.id,
-            'rival': n.rival,
-            'partido_id': n.partido_id,
-            'texto': n.texto,
-            'etiquetas': n.etiquetas_lista,
-            'creada': n.creada.isoformat() if n.creada else None,
-            'actualizada': n.actualizada.isoformat() if n.actualizada else None,
-            'partido_fecha': n.partido.fecha.isoformat() if n.partido else None,
-        }
-
-    return jsonify({
-        'ok': True,
-        'notas_partido': [serializar(n) for n in notas_partido],
-        'notas_rival_previas': [serializar(n) for n in notas_rival],
-    })
-
-
-@app.route('/partido/<int:partido_id>/nota/nueva', methods=['POST'])
-@login_requerido
-def partido_nota_nueva(partido_id):
-    """Crea una nueva nota para este partido."""
+def notas_lista():
+    """Lista todas las notas del entrenador (filtrable por rival)."""
     entrenador = entrenador_actual()
     eq_actual = equipo_actual()
-    partido = Partido.query.filter_by(id=partido_id, entrenador_id=entrenador.id).first_or_404()
+    rival_filtro = request.args.get('rival', '').strip()
+    rival_nuevo = request.args.get('nuevo_para_rival', '').strip()
 
-    data = request.get_json() or {}
-    texto = (data.get('texto') or '').strip()
-    etiquetas = (data.get('etiquetas') or '').strip()
+    query = NotaPartido.query.filter_by(entrenador_id=entrenador.id)
+    if eq_actual:
+        query = query.filter(
+            db.or_(NotaPartido.equipo_id == eq_actual.id, NotaPartido.equipo_id.is_(None))
+        )
+    if rival_filtro:
+        query = query.filter(NotaPartido.rival == rival_filtro)
 
+    notas = query.order_by(NotaPartido.creada.desc()).all()
+
+    # Lista de rivales únicos para el filtro
+    rivales_q = db.session.query(NotaPartido.rival).filter_by(entrenador_id=entrenador.id)
+    if eq_actual:
+        rivales_q = rivales_q.filter(
+            db.or_(NotaPartido.equipo_id == eq_actual.id, NotaPartido.equipo_id.is_(None))
+        )
+    rivales_con_notas = sorted(set(r[0] for r in rivales_q.all() if r[0]))
+
+    # Lista de rivales conocidos de partidos (para el dropdown al crear)
+    partidos_rivales_q = db.session.query(Partido.rival).filter_by(entrenador_id=entrenador.id)
+    if eq_actual:
+        partidos_rivales_q = partidos_rivales_q.filter(Partido.equipo_id == eq_actual.id)
+    rivales_partidos = sorted(set(r[0] for r in partidos_rivales_q.all() if r[0]))
+
+    # Unir las dos listas
+    rivales_todos = sorted(set(rivales_con_notas + rivales_partidos))
+
+    return render_template(
+        'notas_lista.html',
+        notas=notas,
+        rivales_con_notas=rivales_con_notas,
+        rivales_todos=rivales_todos,
+        rival_filtro=rival_filtro,
+        rival_nuevo=rival_nuevo,
+    )
+
+
+@app.route('/nota/nueva', methods=['POST'])
+@login_requerido
+def nota_nueva():
+    """Crea una nueva nota."""
+    entrenador = entrenador_actual()
+    eq_actual = equipo_actual()
+
+    rival = (request.form.get('rival') or '').strip()
+    rival_nuevo = (request.form.get('rival_nuevo') or '').strip()
+    # Si eligió "Otro rival" desde el dropdown, usar rival_nuevo
+    if rival == '__nuevo__' and rival_nuevo:
+        rival = rival_nuevo
+
+    texto = (request.form.get('texto') or '').strip()
+    etiquetas = (request.form.get('etiquetas') or '').strip()
+
+    if not rival:
+        return redirect(url_for('notas_lista') + '?error=rival_vacio')
     if not texto:
-        return jsonify({'ok': False, 'error': 'La nota no puede estar vacía'}), 400
+        return redirect(url_for('notas_lista') + '?error=texto_vacio')
 
     nota = NotaPartido(
         entrenador_id=entrenador.id,
         equipo_id=eq_actual.id if eq_actual else None,
-        partido_id=partido.id,
-        rival=partido.rival,
+        partido_id=None,
+        rival=rival,
         texto=texto,
         etiquetas=etiquetas if etiquetas else None,
     )
     db.session.add(nota)
     db.session.commit()
 
-    return jsonify({
-        'ok': True,
-        'nota': {
-            'id': nota.id,
-            'rival': nota.rival,
-            'partido_id': nota.partido_id,
-            'texto': nota.texto,
-            'etiquetas': nota.etiquetas_lista,
-            'creada': nota.creada.isoformat(),
-            'actualizada': nota.actualizada.isoformat(),
-        }
-    })
+    return redirect(url_for('notas_lista', rival=rival))
 
 
 @app.route('/nota/<int:nota_id>/editar', methods=['POST'])
@@ -2878,27 +2882,23 @@ def nota_editar(nota_id):
     entrenador = entrenador_actual()
     nota = NotaPartido.query.filter_by(id=nota_id, entrenador_id=entrenador.id).first_or_404()
 
-    data = request.get_json() or {}
-    texto = (data.get('texto') or '').strip()
-    etiquetas = (data.get('etiquetas') or '').strip()
+    rival = (request.form.get('rival') or '').strip()
+    rival_nuevo = (request.form.get('rival_nuevo') or '').strip()
+    if rival == '__nuevo__' and rival_nuevo:
+        rival = rival_nuevo
 
-    if not texto:
-        return jsonify({'ok': False, 'error': 'La nota no puede estar vacía'}), 400
+    texto = (request.form.get('texto') or '').strip()
+    etiquetas = (request.form.get('etiquetas') or '').strip()
 
-    nota.texto = texto
+    if rival:
+        nota.rival = rival
+    if texto:
+        nota.texto = texto
     nota.etiquetas = etiquetas if etiquetas else None
     nota.actualizada = datetime.utcnow()
     db.session.commit()
 
-    return jsonify({
-        'ok': True,
-        'nota': {
-            'id': nota.id,
-            'texto': nota.texto,
-            'etiquetas': nota.etiquetas_lista,
-            'actualizada': nota.actualizada.isoformat(),
-        }
-    })
+    return redirect(url_for('notas_lista', rival=nota.rival))
 
 
 @app.route('/nota/<int:nota_id>/borrar', methods=['POST'])
@@ -2909,7 +2909,7 @@ def nota_borrar(nota_id):
     nota = NotaPartido.query.filter_by(id=nota_id, entrenador_id=entrenador.id).first_or_404()
     db.session.delete(nota)
     db.session.commit()
-    return jsonify({'ok': True})
+    return redirect(url_for('notas_lista'))
 
 
 # ============================================================
