@@ -3,77 +3,71 @@
 
 {% block content %}
 <div class="page-header">
-  <h1>📝 Notas</h1>
-  <button class="btn btn-primary" id="btn-abrir-form-nota">+ Nueva nota</button>
+  <h1>Notas</h1>
+  <button class="btn btn-primary" id="btn-abrir-form">+ Nueva nota</button>
 </div>
 
-<!-- Filtro por rival -->
 {% if rivales_con_notas %}
 <div class="notas-filtro">
-  <span class="filtro-label">Filtrar por rival:</span>
+  <span class="filtro-label">Filtrar:</span>
   <div class="filtro-chips">
-    <a href="{{ url_for('notas_lista') }}" class="filtro-chip {% if not rival_filtro %}filtro-chip-active{% endif %}">Todas ({{ notas|length if not rival_filtro else '' }})</a>
+    <a href="{{ url_for('notas_lista') }}" class="filtro-chip {% if not rival_filtro %}filtro-chip-active{% endif %}">Todas</a>
     {% for r in rivales_con_notas %}
-      <a href="{{ url_for('notas_lista', rival=r) }}" class="filtro-chip {% if rival_filtro == r %}filtro-chip-active{% endif %}">{{ r }}</a>
+    <a href="{{ url_for('notas_lista', rival=r) }}" class="filtro-chip {% if rival_filtro == r %}filtro-chip-active{% endif %}">{{ r }}</a>
     {% endfor %}
   </div>
 </div>
 {% endif %}
 
-<!-- Formulario nueva nota (oculto por defecto, se abre con el botón) -->
-<div class="form-nota-card" id="form-nota-card" style="display: none;">
-  <h3 id="form-nota-titulo">Nueva nota</h3>
-  <form method="POST" action="{{ url_for('nota_nueva') }}" id="form-nota">
+<div class="form-nota-card" id="form-nota-card" style="display:none;">
+  <h3 id="form-titulo">Nueva nota</h3>
+  <form method="POST" id="form-nota" action="{{ url_for('nota_nueva') }}">
     <div class="form-row">
-      <label>Rival <span class="req">*</span></label>
-      <div class="rival-row">
-        <select name="rival" id="rival-select" required>
-          <option value="">— Elegí un rival —</option>
-          {% for r in rivales_todos %}
-            <option value="{{ r }}" {% if rival_nuevo == r %}selected{% endif %}>{{ r }}</option>
-          {% endfor %}
-          <option value="__nuevo__">+ Escribir un rival nuevo</option>
-        </select>
-        <input type="text" name="rival_nuevo" id="rival-nuevo-input" placeholder="Nombre del nuevo rival" style="display:none;" />
-      </div>
+      <label>Rival *</label>
+      <select name="rival" id="rival-select" required>
+        <option value="">-- Elegí un rival --</option>
+        {% for r in rivales_todos %}
+        <option value="{{ r }}" {% if rival_nuevo == r %}selected{% endif %}>{{ r }}</option>
+        {% endfor %}
+        <option value="__nuevo__">+ Nuevo rival...</option>
+      </select>
+      <input type="text" name="rival_nuevo" id="rival-nuevo" placeholder="Escribí el nombre del rival" style="display:none; margin-top:8px;" />
     </div>
-
     <div class="form-row">
-      <label>Etiquetas (opcional)</label>
-      <input type="text" name="etiquetas" placeholder="ej: tactica, corner-corto, defensa" />
-      <p class="muted small">Separá las etiquetas con comas. Después podés filtrar por ellas.</p>
+      <label>Etiquetas <span class="muted small">(opcional, separadas por coma)</span></label>
+      <input type="text" name="etiquetas" placeholder="ej: tactica, defensa, corner" />
     </div>
-
     <div class="form-row">
-      <label>Nota <span class="req">*</span></label>
-      <textarea name="texto" rows="6" placeholder="Escribí lo que querés recordar..." required></textarea>
+      <label>Nota *</label>
+      <textarea name="texto" rows="5" placeholder="Escribí lo que querés recordar..." required></textarea>
     </div>
-
     <div class="form-actions">
-      <button type="button" class="link-delete" id="btn-cancelar-form">Cancelar</button>
-      <button type="submit" class="btn btn-primary">Guardar nota</button>
+      <button type="button" class="link-delete" id="btn-cancelar">Cancelar</button>
+      <button type="submit" class="btn btn-primary" id="btn-guardar">Guardar nota</button>
     </div>
   </form>
 </div>
 
-<!-- Lista de notas -->
 {% if notas %}
 <div class="notas-lista">
   {% for n in notas %}
-  <div class="nota-card" data-nota-id="{{ n.id }}">
+  <div class="nota-card">
     <div class="nota-header">
       <div class="nota-titulo-zona">
         <span class="nota-rival-badge">{{ n.rival }}</span>
-        <span class="nota-fecha">{{ n.creada.strftime('%d %b %Y · %H:%M') }}</span>
+        {% if n.creada %}
+        <span class="nota-fecha">{{ n.creada.strftime('%d/%m/%Y') }}</span>
+        {% endif %}
       </div>
       <div class="nota-acciones">
-        <button type="button" class="link-edit nota-btn-editar"
-                data-nota-id="{{ n.id }}"
+        <button class="link-edit nota-btn-editar"
+                data-id="{{ n.id }}"
                 data-rival="{{ n.rival }}"
-                data-texto="{{ n.texto }}"
+                data-texto="{{ n.texto | e }}"
                 data-etiquetas="{{ n.etiquetas or '' }}">Editar</button>
         <form method="POST" action="{{ url_for('nota_borrar', nota_id=n.id) }}"
-              onsubmit="return confirm('¿Borrar esta nota?')" style="display:inline">
+              style="display:inline"
+              onsubmit="return confirm('Borrar esta nota?')">
           <button type="submit" class="link-delete">Borrar</button>
         </form>
       </div>
@@ -81,9 +75,7 @@
     <div class="nota-texto">{{ n.texto }}</div>
     {% if n.etiquetas_lista %}
     <div class="nota-chips">
-      {% for e in n.etiquetas_lista %}
-        <span class="nota-chip">#{{ e }}</span>
-      {% endfor %}
+      {% for tag in n.etiquetas_lista %}<span class="nota-chip">#{{ tag }}</span>{% endfor %}
     </div>
     {% endif %}
   </div>
@@ -91,100 +83,86 @@
 </div>
 {% else %}
 <div class="empty-state">
-  <p class="muted">{% if rival_filtro %}No hay notas para <strong>{{ rival_filtro }}</strong> todavía.{% else %}Todavía no hay notas. Tocá "+ Nueva nota" para empezar.{% endif %}</p>
+  <p class="muted">{% if rival_filtro %}Sin notas para <strong>{{ rival_filtro }}</strong>.{% else %}Todavia no hay notas. Toca &quot;+ Nueva nota&quot; para empezar.{% endif %}</p>
 </div>
 {% endif %}
 
 <script>
-const btnAbrir = document.getElementById('btn-abrir-form-nota');
-const btnCancelar = document.getElementById('btn-cancelar-form');
-const formCard = document.getElementById('form-nota-card');
-const formTitulo = document.getElementById('form-nota-titulo');
-const form = document.getElementById('form-nota');
-const rivalSelect = document.getElementById('rival-select');
-const rivalNuevoInput = document.getElementById('rival-nuevo-input');
+(function() {
+  var btnAbrir = document.getElementById('btn-abrir-form');
+  var btnCancelar = document.getElementById('btn-cancelar');
+  var formCard = document.getElementById('form-nota-card');
+  var formTitulo = document.getElementById('form-titulo');
+  var form = document.getElementById('form-nota');
+  var rivalSel = document.getElementById('rival-select');
+  var rivalNuevo = document.getElementById('rival-nuevo');
+  var btnGuardar = document.getElementById('btn-guardar');
 
-// Toggle del input "nuevo rival" según el dropdown
-if (rivalSelect) {
-  rivalSelect.addEventListener('change', () => {
-    if (rivalSelect.value === '__nuevo__') {
-      rivalNuevoInput.style.display = 'block';
-      rivalNuevoInput.required = true;
-      rivalNuevoInput.focus();
+  rivalSel.addEventListener('change', function() {
+    if (rivalSel.value === '__nuevo__') {
+      rivalNuevo.style.display = 'block';
+      rivalNuevo.required = true;
     } else {
-      rivalNuevoInput.style.display = 'none';
-      rivalNuevoInput.required = false;
+      rivalNuevo.style.display = 'none';
+      rivalNuevo.required = false;
     }
   });
-}
 
-function abrirFormNueva() {
-  formTitulo.textContent = 'Nueva nota';
-  form.action = '{{ url_for("nota_nueva") }}';
-  form.reset();
-  if (rivalNuevoInput) rivalNuevoInput.style.display = 'none';
-  formCard.style.display = 'block';
-  formCard.scrollIntoView({behavior: 'smooth', block: 'start'});
-}
-
-function cerrarForm() {
-  formCard.style.display = 'none';
-  form.reset();
-  if (rivalNuevoInput) rivalNuevoInput.style.display = 'none';
-}
-
-btnAbrir.addEventListener('click', abrirFormNueva);
-btnCancelar.addEventListener('click', cerrarForm);
-
-// Editar nota
-document.querySelectorAll('.nota-btn-editar').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const id = btn.dataset.notaId;
-    const rival = btn.dataset.rival;
-    const texto = btn.dataset.texto;
-    const etiquetas = btn.dataset.etiquetas;
-
-    formTitulo.textContent = 'Editar nota';
-    form.action = '/nota/' + id + '/editar';
-
-    // Seleccionar el rival en el dropdown
-    let opcionEncontrada = false;
-    for (const opt of rivalSelect.options) {
-      if (opt.value === rival) {
-        opt.selected = true;
-        opcionEncontrada = true;
-        break;
-      }
-    }
-    if (!opcionEncontrada) {
-      // Es un rival que no está en la lista — usar "nuevo"
-      rivalSelect.value = '__nuevo__';
-      rivalNuevoInput.value = rival;
-      rivalNuevoInput.style.display = 'block';
-      rivalNuevoInput.required = true;
-    } else {
-      rivalNuevoInput.style.display = 'none';
-      rivalNuevoInput.required = false;
-    }
-
-    form.querySelector('[name=texto]').value = texto;
-    form.querySelector('[name=etiquetas]').value = etiquetas;
-
+  function abrirNueva() {
+    formTitulo.textContent = 'Nueva nota';
+    form.action = '{{ url_for("nota_nueva") }}';
+    form.reset();
+    rivalNuevo.style.display = 'none';
+    rivalNuevo.required = false;
     formCard.style.display = 'block';
     formCard.scrollIntoView({behavior: 'smooth', block: 'start'});
-  });
-});
-
-// Si llegamos con ?nuevo_para_rival=X, abrir formulario directamente con ese rival
-{% if rival_nuevo %}
-abrirFormNueva();
-// Seleccionar el rival si existe en el dropdown
-for (const opt of rivalSelect.options) {
-  if (opt.value === '{{ rival_nuevo }}') {
-    opt.selected = true;
-    break;
   }
-}
-{% endif %}
+
+  function cerrar() {
+    formCard.style.display = 'none';
+    form.reset();
+    rivalNuevo.style.display = 'none';
+  }
+
+  btnAbrir.addEventListener('click', abrirNueva);
+  btnCancelar.addEventListener('click', cerrar);
+
+  document.querySelectorAll('.nota-btn-editar').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      formTitulo.textContent = 'Editar nota';
+      form.action = '/nota/' + btn.dataset.id + '/editar';
+      var rival = btn.dataset.rival;
+      var elegido = false;
+      for (var i = 0; i < rivalSel.options.length; i++) {
+        if (rivalSel.options[i].value === rival) {
+          rivalSel.selectedIndex = i;
+          elegido = true;
+          break;
+        }
+      }
+      if (!elegido) {
+        rivalSel.value = '__nuevo__';
+        rivalNuevo.style.display = 'block';
+        rivalNuevo.required = true;
+        rivalNuevo.value = rival;
+      } else {
+        rivalNuevo.style.display = 'none';
+        rivalNuevo.required = false;
+      }
+      form.querySelector('[name=texto]').value = btn.dataset.texto;
+      form.querySelector('[name=etiquetas]').value = btn.dataset.etiquetas;
+      formCard.style.display = 'block';
+      formCard.scrollIntoView({behavior: 'smooth', block: 'start'});
+    });
+  });
+
+  {% if rival_nuevo %}
+  abrirNueva();
+  var rv = '{{ rival_nuevo }}';
+  for (var i = 0; i < rivalSel.options.length; i++) {
+    if (rivalSel.options[i].value === rv) { rivalSel.selectedIndex = i; break; }
+  }
+  {% endif %}
+})();
 </script>
 {% endblock %}
