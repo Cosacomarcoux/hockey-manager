@@ -2799,35 +2799,24 @@ def bloque_eliminar(partido_id, bloque_id):
 def notas_lista():
     """Lista todas las notas del entrenador (filtrable por rival)."""
     entrenador = entrenador_actual()
-    eq_actual = equipo_actual()
     rival_filtro = request.args.get('rival', '').strip()
     rival_nuevo = request.args.get('nuevo_para_rival', '').strip()
 
+    # Notas del entrenador (todas, sin filtrar por equipo por ahora)
     query = NotaPartido.query.filter_by(entrenador_id=entrenador.id)
-    if eq_actual:
-        query = query.filter(
-            db.or_(NotaPartido.equipo_id == eq_actual.id, NotaPartido.equipo_id.is_(None))
-        )
     if rival_filtro:
         query = query.filter(NotaPartido.rival == rival_filtro)
-
     notas = query.order_by(NotaPartido.creada.desc()).all()
 
-    # Lista de rivales únicos para el filtro
-    rivales_q = db.session.query(NotaPartido.rival).filter_by(entrenador_id=entrenador.id)
-    if eq_actual:
-        rivales_q = rivales_q.filter(
-            db.or_(NotaPartido.equipo_id == eq_actual.id, NotaPartido.equipo_id.is_(None))
-        )
-    rivales_con_notas = sorted(set(r[0] for r in rivales_q.all() if r[0]))
+    # Lista de rivales únicos en las notas (para los chips de filtro)
+    todas_notas = NotaPartido.query.filter_by(entrenador_id=entrenador.id).all()
+    rivales_con_notas = sorted(set(n.rival for n in todas_notas if n.rival))
 
-    # Lista de rivales conocidos de partidos (para el dropdown al crear)
-    partidos_rivales_q = db.session.query(Partido.rival).filter_by(entrenador_id=entrenador.id)
-    if eq_actual:
-        partidos_rivales_q = partidos_rivales_q.filter(Partido.equipo_id == eq_actual.id)
-    rivales_partidos = sorted(set(r[0] for r in partidos_rivales_q.all() if r[0]))
+    # Lista de rivales de partidos pasados (para el dropdown al crear)
+    partidos = Partido.query.filter_by(entrenador_id=entrenador.id).all()
+    rivales_partidos = sorted(set(p.rival for p in partidos if p.rival))
 
-    # Unir las dos listas
+    # Unir ambas listas
     rivales_todos = sorted(set(rivales_con_notas + rivales_partidos))
 
     return render_template(
